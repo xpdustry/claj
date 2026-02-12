@@ -30,6 +30,7 @@ public class StreamReceiver {
   protected static IntMap<StreamBuilder> cbuilders;
 
   /**
+   * Client stream builders.
    * @return {@code null} until a stream is complete.
    * @throws RuntimeException if a chunk was received before his head.
    */
@@ -42,8 +43,8 @@ public class StreamReceiver {
     else if (packet instanceof StreamChunk chunk) {
       StreamBuilder builder = cbuilders.get(chunk.id);
       if (builder == null)
-        throw new RuntimeException("Received a stream chunk without a StreamHead beforehand!");
-      builder.add(chunk.data);
+        throw new RuntimeException("Received a StreamChunk without a StreamHead beforehand!");
+      builder.add(chunk);
       if (builder.isDone()) {
         cbuilders.remove(chunk.id);
         return builder.build();
@@ -54,6 +55,7 @@ public class StreamReceiver {
   }
 
   /**
+   * Server stream builders.
    * @return {@code null} until a stream is complete.
    * @throws RuntimeException if a chunk was received before his head.
    */
@@ -62,21 +64,38 @@ public class StreamReceiver {
 
     if (packet instanceof StreamHead begin)
       sbuilders.get(connection.getID(), () -> new IntMap<>(8))
-              .put(begin.id, new StreamBuilder(begin));
+               .put(begin.id, new StreamBuilder(begin));
 
     else if (packet instanceof StreamChunk chunk) {
       IntMap<StreamBuilder> builds = sbuilders.get(connection.getID());
       StreamBuilder builder = builds != null ? builds.get(chunk.id) : null;
       if (builder == null)
-        throw new RuntimeException("Received a stream chunk without a StreamHead beforehand!");
+        throw new RuntimeException("Received a StreamChunk without a StreamHead beforehand!");
       builder.add(chunk.data);
       if (builder.isDone()) {
         builds.remove(chunk.id);
-        if (builds.isEmpty()) sbuilders.remove(connection.getID());
+        // Must be cleared at disconnect
+        //if (builds.isEmpty()) sbuilders.remove(connection.getID());
         return builder.build();
       }
     }
 
     return null;
+  }
+
+  /** Clears all stream builders. */
+  public static void resetAll() {
+    if (sbuilders != null) sbuilders.clear();
+    if (cbuilders != null) cbuilders.clear();
+  }
+
+  /** Clears client stream builders. */
+  public static void reset() {
+    if (cbuilders != null) cbuilders.clear();
+  }
+
+  /** Removes server stream builders of a connection. Must be called at disconnect. */
+  public static void reset(Connection connection) {
+    if (sbuilders != null) sbuilders.remove(connection.getID());
   }
 }

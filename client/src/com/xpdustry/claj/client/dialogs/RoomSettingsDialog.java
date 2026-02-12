@@ -181,7 +181,7 @@ public class RoomSettingsDialog extends BaseDialog {
     isPublic.setChecked(Core.settings.getBool("claj-room-public", false));
     isProtected.setChecked(Core.settings.getBool("claj-room-protected", false));
     autoHost.setChecked(Core.settings.getBool("claj-autohost", false));
-    int playerlimit = getPlayerLimit();
+    int playerlimit =  Vars.netServer.admins.getPlayerLimit();
     playerLimit.setValue(playerlimit);
 
     roomName.setText(Vars.player.name);
@@ -210,7 +210,7 @@ public class RoomSettingsDialog extends BaseDialog {
     Core.settings.put("claj-room-protected", isProtected.isChecked());
     Core.settings.put("claj-room-password", (int)lastPassword); // =/
     Core.settings.put("claj-autohost", autoHost.isChecked());
-    Core.settings.put("claj-playerlimit",
+    Vars.netServer.admins.setPlayerLimit(
       (int)Mathf.clamp(playerLimit.getValue(), playerLimit.getMinValue(), playerLimit.getMaxValue()));
 
     // Allow state requests by default
@@ -225,9 +225,5 @@ public class RoomSettingsDialog extends BaseDialog {
       (short)Core.settings.getInt("claj-room-password", 0),
       true
     );
-  }
-
-  public int getPlayerLimit() {
-    return Core.settings.getInt("claj-playerlimit", Vars.netServer.admins.getPlayerLimit());
   }
 }

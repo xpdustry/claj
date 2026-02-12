@@ -342,10 +342,10 @@ public class ClajRoom implements NetListener {
   }
 
   public boolean isStateRequestTimedOut() {
-    return requestingState && Time.timeSinceMillis(lastRequestedState) >= ClajConfig.stateTimeout;
+    return !requestingState || Time.timeSinceMillis(lastRequestedState) >= ClajConfig.stateTimeout;
   }
   public boolean isStateRequestTimedOut(long time) {
-    return requestingState && time - lastRequestedState >= ClajConfig.stateTimeout;
+    return !requestingState || time - lastRequestedState >= ClajConfig.stateTimeout;
   }
 
   public boolean isStateOutdated() {

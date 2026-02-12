@@ -222,7 +222,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
           else if (room.requestState())
             Log.info("State of room @ has been requested.", room.sid);
           else
-            Log.info("A request is already pending, please wait a moment. ");
+            Log.info("A request is already pending, please wait a moment.");
           break;
 
         case "list":

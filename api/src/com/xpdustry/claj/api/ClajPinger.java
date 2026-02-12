@@ -113,7 +113,10 @@ public class ClajPinger extends Client {
       super.update(canceling ? 0 : t);
       if (isRequestTimedOut()) timeout();
       if (canceling) close();
-    } catch (Exception e) { ArcNet.handleError(e); }
+    } catch (Exception e) {
+      close();
+      ArcNet.handleError(e);
+    }
   }
 
   @Override

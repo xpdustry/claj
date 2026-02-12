@@ -59,7 +59,7 @@ public interface ClajProvider {
   ClajVersion getVersion();
 
   /** Listener added to all virtual connections. Can be {@code null}. */
-  default NetListener getConnectionListener() { return null; }
+  default NetListener getConnectionListener(ClajProxy proxy) { return null; }
 
   /**
    * The actual room state, in an encoded form. <br>
@@ -91,7 +91,7 @@ public interface ClajProvider {
   Serializer getPacketWrapperSerializer();
 
   // Client specific handling
-  default void showTextMessage(String text) {}
-  default void showMessage(MessageType message) {}
-  default void showPopup(String text) {}
+  default void showTextMessage(ClajProxy proxy, String text) {}
+  default void showMessage(ClajProxy proxy, MessageType message) {}
+  default void showPopup(ClajProxy proxy, String text) {}
 }

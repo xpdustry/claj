@@ -25,6 +25,7 @@ import arc.net.DcReason;
 import arc.util.Log;
 import arc.util.Ratekeeper;
 
+import com.xpdustry.claj.common.net.stream.PreparedStream;
 import com.xpdustry.claj.common.net.stream.StreamSender;
 import com.xpdustry.claj.common.packets.Packet;
 import com.xpdustry.claj.common.util.AddressUtil;
@@ -71,6 +72,10 @@ public class ClajConnection {
 
   public void sendStream(Packet packet) {
     StreamSender.send(connection, packet);
+  }
+
+  public void sendStream(PreparedStream stream) {
+    stream.send(connection);
   }
 
   public void close() { close(DcReason.closed); }

@@ -25,14 +25,11 @@ import arc.net.Connection;
 import arc.util.Ratekeeper;
 
 import mindustry.Vars;
-import mindustry.net.Host;
-import mindustry.net.NetConnection;
-import mindustry.net.NetworkIO;
+import mindustry.net.*;
 import mindustry.net.Packets.KickReason;
 
 import com.xpdustry.claj.api.ClajProvider;
 import com.xpdustry.claj.api.ClajProxy;
-import com.xpdustry.claj.api.net.VirtualConnection;
 import com.xpdustry.claj.common.packets.ConnectionJoinPacket;
 import com.xpdustry.claj.common.util.Structs;
 
@@ -54,8 +51,8 @@ public class MindustryClajProxy extends ClajProxy {
     Cons<ConnectionJoinPacket> oldConJoin = receiver.getListener(ConnectionJoinPacket.class);
     receiver.handle(ConnectionJoinPacket.class, p -> {
       oldConJoin.get(p);
-      VirtualConnection con = getConnection(p.conID);
-      if (con == null || !(con.getArbitraryData() instanceof NetConnection net)) return;
+      NetConnection net = toMindustryConnection(getConnection(p.conID));
+      if (net == null) return;
       // Change the packet rate and chat rate to a no-op version to avoid a potential life blacklisting
       net.packetRate = noopRate;
       net.chatRate = noopRate;
@@ -77,7 +74,7 @@ public class MindustryClajProxy extends ClajProxy {
   }
 
   public static NetConnection toMindustryConnection(Connection connection) {
-    return connection.getArbitraryData() instanceof NetConnection nc ? nc : null;
+    return connection != null && connection.getArbitraryData() instanceof NetConnection nc ? nc : null;
   }
 
   public void kickAllConnections(KickReason reason) {

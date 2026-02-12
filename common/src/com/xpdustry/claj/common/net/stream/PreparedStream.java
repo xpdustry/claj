@@ -19,29 +19,29 @@
 
 package com.xpdustry.claj.common.net.stream;
 
-import arc.util.io.ByteBufferInput;
-import arc.util.io.ByteBufferOutput;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+
+import arc.net.Connection;
+import arc.util.io.ReusableByteOutStream;
 
 
-/** {@link mindustry.net.Packets.StreamChunk}. */
-public class StreamChunk implements StreamPacket {
-  public int id;
-  public boolean last;
-  public byte[] data;
+/** Class holding pre-serialized stream, ready to send. This avoids re-serializing the data every times. */
+public class PreparedStream {
+  protected final ReusableByteOutStream data;
+  public final byte type;
+  public final int chunkSize;
+  public final boolean compressed;
 
-  @Override
-  public void read(ByteBufferInput in) {
-    id = in.readInt();
-    last = in.readBoolean();
-    data = new byte[in.readUnsignedShort()];
-    in.readFully(data);
+  public PreparedStream(ReusableByteOutStream data, byte type, int chunkSize, boolean compressed) {
+    this.data = data;
+    this.type = type;
+    this.chunkSize = chunkSize;
+    this.compressed = compressed;
   }
 
-  @Override
-  public void write(ByteBufferOutput out) {
-    out.writeInt(id);
-    out.writeBoolean(last);
-    out.writeShort((short)data.length);
-    out.write(data);
+  public StreamSender send(Connection connection) {
+    InputStream in = new ByteArrayInputStream(data.getBytes(), 0, data.size());
+    return new StreamSender(connection, in, type, data.size(), chunkSize, compressed);
   }
 }

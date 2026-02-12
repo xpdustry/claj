@@ -37,6 +37,7 @@ import com.xpdustry.claj.common.ClajNet;
 import com.xpdustry.claj.common.ClajPackets.*;
 import com.xpdustry.claj.common.net.NetListenerFilter;
 import com.xpdustry.claj.common.net.ServerReceiver;
+import com.xpdustry.claj.common.net.stream.*;
 import com.xpdustry.claj.common.packets.*;
 import com.xpdustry.claj.common.status.*;
 import com.xpdustry.claj.common.util.AddressUtil;
@@ -154,6 +155,7 @@ public class ClajRelay extends Server implements ApplicationListener {
 
     Log.debug("Connection @ (@) lost: @.", id, ip, reason);
     notifiedIdle.remove(connection.getID());
+    StreamReceiver.reset(connection); // in case of
 
     // Avoid searching for a room if it was an invalid connection or just a ping
     return con != null;
@@ -875,7 +877,7 @@ public class ClajRelay extends Server implements ApplicationListener {
     }
 
     public void set(ClajRoom room, boolean stateChanged) {
-      if (room.isPublic) {
+      if (!room.isPublic) {
         remove(room.id);
         return;
       }
@@ -910,12 +912,13 @@ public class ClajRelay extends Server implements ApplicationListener {
         refreshTask.cancel();
         refreshTask = null;
       }
-      clearRequests();
+      requesting.clear();
 
       if (pending.isEmpty()) return;
       Log.debug("Sending room list of type @ to @ pending request" + (pending.size > 1 ? "s..." : "..."),
                 type, pending.size);
-      pending.each(c -> c.sendStream(packet));
+      PreparedStream stream = StreamSender.prepare(packet); // optimization
+      pending.each(c -> c.sendStream(stream));
       pending.clear();
     }
 
@@ -925,10 +928,6 @@ public class ClajRelay extends Server implements ApplicationListener {
 
     public boolean updating() {
       return requesting.size > 0;
-    }
-
-    public void clearRequests() {
-      requesting.clear();
     }
   }
 

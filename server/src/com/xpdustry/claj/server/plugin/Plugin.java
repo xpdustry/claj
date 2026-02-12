@@ -50,4 +50,7 @@ public interface Plugin {
 
   /** Register any commands. */
   default void registerCommands(CommandHandler handler) {}
+
+  /** Dispose any resources of the plugin. */
+  default void dispose() {}
 }

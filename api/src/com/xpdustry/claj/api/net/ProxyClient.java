@@ -54,14 +54,12 @@ public abstract class ProxyClient extends Client {
   protected final IntMap<VirtualConnection> connectionsMap = new IntMap<>();
   /** For faster iteration. */
   protected VirtualConnection[] connections = {};
-  protected final NetListener conListener;
+  protected NetListener conListener;
   protected volatile boolean shutdown = true, starting, ignoreExceptions, connecting;
   protected ClientReceiver receiver;
 
-  public ProxyClient(int writeBufferSize, int objectBufferSize, NetSerializer serialization, NetListener conListener,
-                     Cons<Runnable> taskPoster) {
+  public ProxyClient(int writeBufferSize, int objectBufferSize, NetSerializer serialization, Cons<Runnable> taskPoster) {
     super(writeBufferSize, objectBufferSize, serialization);
-    this.conListener = conListener;
     receiver = new ClientReceiver(this, taskPoster);
   }
 
@@ -217,9 +215,6 @@ public abstract class ProxyClient extends Client {
     removeConnection(con);
   }
 
-  // end region
-  // region notifier
-
   protected VirtualConnection conConnected(int conId, long addressHash) {
     VirtualConnection con = getConnection(conId);
     if (con == null) {
@@ -249,11 +244,6 @@ public abstract class ProxyClient extends Client {
     return con;
   }
 
-  // end region
-  // region packet making
-
   protected abstract Object makeConWrapPacket(int conId, Object object, boolean tcp);
   protected abstract Object makeConClosePacket(int conId, DcReason reason);
-
-  // end region
 }

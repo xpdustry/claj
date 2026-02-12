@@ -202,6 +202,11 @@ public class Plugins implements ApplicationListener {
     eachClass(Plugin::init);
   }
 
+  @Override
+  public void dispose() {
+    eachClass(Plugin::dispose);
+  }
+
   /** Loads all plugins from the folder, but does not call any methods on them.*/
   public void load() {
     Seq<Fi> candidates = new Seq<>();

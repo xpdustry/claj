@@ -40,12 +40,9 @@ public class StreamSender extends InputStreamSender {
   public final InputStream input;
   public final byte type;
   public final int length;
+  public final int chunkSize;
   public final boolean compressed;
-  int id;
-
-  public StreamSender(Connection connection, InputStream stream, byte type, int length) {
-    this(connection, stream, type, length, 4096, true);
-  }
+  protected int id, written;
 
   public StreamSender(Connection connection, InputStream stream, byte type, int length,
                       int chunkSize, boolean isCompressed) {
@@ -54,6 +51,7 @@ public class StreamSender extends InputStreamSender {
     this.input = stream;
     this.type = type;
     this.length = length;
+    this.chunkSize = chunkSize;
     this.compressed = isCompressed;
 
     connection.addListener(this);
@@ -72,31 +70,44 @@ public class StreamSender extends InputStreamSender {
   @Override
   protected Object next(byte[] bytes) {
     StreamChunk chunk = new StreamChunk();
+    written += bytes.length;
     chunk.id = id;
+    chunk.last = written >= length;
     chunk.data = bytes;
     return chunk;
   }
 
 
   public static StreamSender send(Connection connection, Packet packet) {
-    return send(connection, packet, 4096);
+    return send(connection, packet, 2048, true);
   }
 
-  ///** Returns {@code null} if no stream chunking was needed. */
-  public static StreamSender send(Connection connection, Packet packet, int chunkSize) {
+  public static StreamSender send(Connection connection, Packet packet, boolean compress) {
+    return send(connection, packet, 2048, compress);
+  }
+
+  public static StreamSender send(Connection connection, Packet packet, int chunkSize, boolean compress) {
     byte id = ClajNet.getId(packet); // will check if the packet is registered
-    ByteArrayBufferOutput buff = new ByteArrayBufferOutput(chunkSize / 2, true);
-
+    ByteArrayBufferOutput buff = new ByteArrayBufferOutput(chunkSize, compress);
     packet.write(buff);
-    int size = buff.back.size();
+    buff.close();
+    InputStream in = new ByteArrayInputStream(buff.back.getBytes(), 0, buff.back.size());
+    return new StreamSender(connection, in, id, buff.back.size(), chunkSize, buff.compressed);
+  }
 
-    //if (size < chunkSize) {
-    //  // Send raw buffer to avoid serializing twice
-    //  connection.sendTCP(buff.buffer.flip());
-    //  return null;
-    //}
+  public static PreparedStream prepare(Packet packet) {
+    return prepare(packet, 2048, true);
+  }
 
-    InputStream in = new ByteArrayInputStream(buff.back.getBytes(), 0, size);
-    return new StreamSender(connection, in, id, size, chunkSize, buff.compressed);
+  public static PreparedStream prepare(Packet packet, boolean compress) {
+    return prepare(packet, 2048, compress);
+  }
+
+  public static PreparedStream prepare(Packet packet, int chunkSize, boolean compress) {
+    byte id = ClajNet.getId(packet); // will check if the packet is registered
+    ByteArrayBufferOutput buff = new ByteArrayBufferOutput(chunkSize,  compress);
+    packet.write(buff);
+    buff.close();
+    return new PreparedStream(buff.back, id, chunkSize, buff.compressed);
   }
 }

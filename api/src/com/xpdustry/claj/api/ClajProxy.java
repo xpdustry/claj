@@ -49,8 +49,9 @@ public class ClajProxy extends ProxyClient {
   protected ClajLink link;
 
   public ClajProxy(ClajProvider provider) {
-    super(32768, 16384, new ClajClientSerializer(), provider.getConnectionListener(), provider::postTask);
+    super(32768, 16384, new ClajClientSerializer(), provider::postTask);
     this.provider = provider;
+    this.conListener = provider.getConnectionListener(this);
 
     receiver.handle(Connect.class, this::requestRoomId);
     receiver.handle(Disconnect.class, () -> runRoomClose(CloseReason.error));
@@ -64,9 +65,9 @@ public class ClajProxy extends ProxyClient {
     receiver.handle(RoomLinkPacket.class, p -> runRoomCreated(p.roomId));
     receiver.handle(RoomStateRequestPacket.class, this::notifyGameState);
 
-    receiver.handle(ClajTextMessagePacket.class, p -> provider.showTextMessage(p.message));
-    receiver.handle(ClajMessagePacket.class, p -> provider.showMessage(p.message));
-    receiver.handle(ClajPopupPacket.class, p -> provider.showPopup(p.message));
+    receiver.handle(ClajTextMessagePacket.class, p -> provider.showTextMessage(this, p.message));
+    receiver.handle(ClajMessagePacket.class, p -> provider.showMessage(this, p.message));
+    receiver.handle(ClajPopupPacket.class, p -> provider.showPopup(this, p.message));
   }
 
   /** This method must be used instead of others connect methods */

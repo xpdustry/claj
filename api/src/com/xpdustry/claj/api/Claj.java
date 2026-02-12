@@ -71,8 +71,8 @@ public class Claj {
     this.proxies = proxies;
     this.pingers = pingers;
     // Automatically disposes workers when the application closes, if defined
+    if (Core.app == null) return;
     Core.app.addListener(new ApplicationListener() {
-      @Override
       public void dispose() { Claj.this.dispose(); }
     });
   }

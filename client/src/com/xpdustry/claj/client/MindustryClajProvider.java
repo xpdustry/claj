@@ -27,6 +27,7 @@ import arc.net.NetListener;
 import arc.net.Server;
 import arc.util.Reflect;
 import arc.util.Strings;
+import arc.util.Timer;
 import arc.util.io.ByteBufferInput;
 import arc.util.io.ByteBufferOutput;
 
@@ -90,7 +91,7 @@ public class MindustryClajProvider implements ClajProvider {
   }
 
   @Override
-  public NetListener getConnectionListener() {
+  public NetListener getConnectionListener(ClajProxy proxy) {
     return mindustryServerDispatcher;
   }
 
@@ -134,18 +135,23 @@ public class MindustryClajProvider implements ClajProvider {
   }
 
   @Override
-  public void showTextMessage(String text) {
+  public void showTextMessage(ClajProxy proxy, String text) {
     Call.sendMessage("[scarlet][[CLaJ Server]:[] " + text);
   }
 
   @Override
-  public void showMessage(MessageType message) {
+  public void showMessage(ClajProxy proxy, MessageType message) {
     Call.sendMessage("[scarlet][[CLaJ Server]:[] " +
       Core.bundle.get("claj.message." + Strings.camelToKebab(message.name())));
+
+    Timer.schedule(() -> {
+      if (!proxy.roomCreated()) return;
+      proxy.closeRoom();
+    }, 5);
   }
 
   @Override
-  public void showPopup(String text) {
+  public void showPopup(ClajProxy proxy, String text) {
     // UI#showText place the title to the wrong side =/
     //Vars.ui.showText("[scarlet][[CLaJ Server][] ", text);
     Vars.ui.showOkText("[scarlet][[CLaJ Server][] ", text, () -> {});

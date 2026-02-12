@@ -20,8 +20,7 @@
 package com.xpdustry.claj.common.util;
 
 import java.nio.ByteBuffer;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 
 import arc.util.io.ByteBufferOutput;
 import arc.util.io.FastDeflaterOutputStream;
@@ -32,7 +31,7 @@ import arc.util.io.ReusableByteOutStream;
  * Writes data into a {@link ByteArrayOutputStream},
  * optionally compressible and maintains a {@link ByteBuffer} to the data.
   */
-public class ByteArrayBufferOutput extends ByteBufferOutput {
+public class ByteArrayBufferOutput extends ByteBufferOutput implements Closeable, Flushable {
   public final ReusableByteOutStream back;
   public final DataOutputStream stream;
   public final boolean compressed;
@@ -40,7 +39,6 @@ public class ByteArrayBufferOutput extends ByteBufferOutput {
   public ByteArrayBufferOutput() { this(512, false); }
   public ByteArrayBufferOutput(int initialCapacity) { this(initialCapacity, false); }
   public ByteArrayBufferOutput(int initialCapacity, boolean compress) {
-    super(null);
     back = new ReusableByteOutStream(initialCapacity);
     stream = new DataOutputStream(compress ? new FastDeflaterOutputStream(back) : back);
     buffer = ByteBuffer.wrap(back.getBytes());
@@ -145,7 +143,21 @@ public class ByteArrayBufferOutput extends ByteBufferOutput {
     updateBuffer();
   }
 
-  protected void updateBuffer() {
+ @Override
+  public void flush() {
+    try { stream.flush(); }
+    catch (IOException e) { throw new RuntimeException(e); }
+    updateBuffer();
+  }
+
+  @Override
+  public void close() {
+    try { stream.close(); }
+    catch (IOException e) { throw new RuntimeException(e); }
+    updateBuffer();
+  }
+
+  public void updateBuffer() {
     if (back.getBytes() != buffer.array())
       buffer = ByteBuffer.wrap(back.getBytes());
     buffer.position(back.size());

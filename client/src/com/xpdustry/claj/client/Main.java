@@ -19,12 +19,13 @@
 
 package com.xpdustry.claj.client;
 
+import arc.ApplicationListener;
+import arc.Core;
 import arc.Events;
 import arc.util.Timer;
 
 import mindustry.Vars;
 import mindustry.game.EventType;
-import mindustry.gen.Groups;
 import mindustry.gen.KickCallPacket2;
 import mindustry.mod.Mod;
 import mindustry.mod.Mods;
@@ -56,20 +57,18 @@ public class Main extends Mod {
     });
     Events.run(EventType.HostEvent.class, this::stopClaj);
     Events.run(EventType.ClientPreConnectEvent.class, this::stopClaj);
-    Events.on(EventType.ConnectPacketEvent.class, e -> {
-      // Manual player limit, to avoid problem if the mod is removed
-      if (e.packet.uuid == null || e.packet.usid == null) return;
-      int playerlimit = ClajUi.settings.getPlayerLimit();
-      if (playerlimit > 0 && Groups.player.size() >= playerlimit &&
-          !Vars.netServer.admins.isAdmin(e.packet.uuid, e.packet.usid))
-        e.connection.kick(KickReason.playerLimit);
-    });
 
     // Hooks NetClient#kick() packet to reconnect to the room
     Vars.net.handleClient(KickCallPacket2.class, p -> {
       p.handleClient();
       if (p.reason == KickReason.serverRestarting)
         ClajUi.join.rejoinRoom();
+    });
+
+    // Need to revert player limit in case of the mod is removed
+    int originalPlayerLimit = Vars.netServer.admins.getPlayerLimit();
+    Core.app.addListener(new ApplicationListener() {
+      public void dispose() { Vars.netServer.admins.setPlayerLimit(originalPlayerLimit); }
     });
   }
 

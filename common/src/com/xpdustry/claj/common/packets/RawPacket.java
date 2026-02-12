@@ -62,10 +62,17 @@ public class RawPacket implements Packet {
     return ByteBuffer.wrap(data);
   }
 
-  /** Suppresses {@code src} reading. */
+  /** Suppresses {@code src} reading. Optimized for backed array buffers. */
   public static void write(ByteBuffer src, ByteBufferOutput write) {
-    int pos = src.position();
-    write.buffer.put(src);
-    src.position(pos);
+    if (src.hasArray()) {
+      write.write(src.array(), src.arrayOffset() + src.position(), src.remaining());
+    } else {
+      // Not safe to write buffer directly
+      int pos = src.position();
+      byte[] bytes = new byte[src.remaining()];
+      src.get(bytes);
+      src.position(pos);
+      write.write(bytes);
+    }
   }
 }

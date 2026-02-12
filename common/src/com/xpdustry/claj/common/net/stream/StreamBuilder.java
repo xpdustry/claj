@@ -39,6 +39,7 @@ public class StreamBuilder {
   public final boolean compressed;
   public final ReusableByteOutStream back;
   public final OutputStream stream;
+  protected boolean finished;
 
   public StreamBuilder(StreamHead head) {
     id = head.id;
@@ -49,17 +50,36 @@ public class StreamBuilder {
     stream = compressed ? new InflaterOutputStream(back) : back;
   }
 
+  public int size() {
+    return back.size();
+  }
+
   public float progress() {
-    return (float)back.size() / total;
+    return (float)size() / total;
   }
 
   public boolean isDone() {
-    return back.size() >= total;
+    return finished || size() >= total;
+  }
+
+  /** Sets finish state and closes stream. */
+  public void finish() {
+    finished = true;
+    try { stream.close(); }
+    catch (IOException e) { throw new RuntimeException(e); }
+  }
+
+  public void add(StreamChunk chunk) {
+    if (chunk.id != id) throw new IllegalArgumentException("wrong chunk id; " + chunk.id + "!=" + id);
+    add(chunk.data);
+    if (chunk.last) finish();
   }
 
   public void add(byte[] bytes) {
-    try { stream.write(bytes); }
-    catch (IOException e) { throw new RuntimeException(e); }
+    try {
+      stream.write(bytes);
+      stream.flush();
+    } catch (IOException e) { throw new RuntimeException(e); }
   }
 
   @SuppressWarnings("unchecked")
