@@ -10,9 +10,8 @@ CLaJ (Copy Link and Join) allows you to play with your friends, just by creating
 
 [lightgray]Note: To install the mod for Mindustry v8, click 'View Releases' instead of 'Install' and install the latest version named 'CLaJ for Mindustry V8'.[]
 '''
-version: "2.4"
-minGameVersion: "146"
-minGameVersionV8: "154" // Will be renamed to 'minGameVersion' if using the 'client:buildV8' gradle task
+version: "2.5"
+minGameVersion: "157"
 java: true
 hidden: true
 repo: xpdustry/claj

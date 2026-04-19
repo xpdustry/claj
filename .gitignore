@@ -119,3 +119,5 @@ gradle-app.setting
 
 # End of https://www.toptal.com/developers/gitignore/api/eclipse,gradle,java
 
+### Custom ###
+.idea/
