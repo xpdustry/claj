@@ -39,7 +39,7 @@ import com.xpdustry.claj.common.util.Structs;
  * - Packet reception must be done manually. <br>
  * - Notifying methods must be called ({@link #conConnected}, {@link #conDisconnected}, {@link #conReceived} and
  * {@link #conIdle}). <br>
- * - Packet making methods must be defined ({@link #makeWrapPacket} and {@link #makeClosePacket}).
+ * - Packet making methods must be defined ({@link #makeConWrapPacket} and {@link #makeConClosePacket(int, DcReason)}).
  */
 public abstract class ProxyClient extends Client {
   public static int defaultTimeout = 5000; //ms

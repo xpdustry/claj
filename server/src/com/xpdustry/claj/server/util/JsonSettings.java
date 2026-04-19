@@ -338,7 +338,7 @@ public class JsonSettings implements Autosaver.Saveable {
     put(name, elementType, null, value);
   }
 
-  /** @apiNote {@code keyType} is not supported and ignored. object keys are converted using {@link String#valueOf(Object)} */
+  /** Note: {@code keyType} is not supported and ignored. object keys are converted using {@link String#valueOf(Object)} */
   public synchronized <K, E> void put(String name, Class<E> elementType, Class<K> keyType, Object value) {
     // Store primitive, null and JsonValue values directly instead of converting it to JsonValue
     if (value == null || isKnownType(value.getClass())) {

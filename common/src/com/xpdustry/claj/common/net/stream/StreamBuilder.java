@@ -30,8 +30,8 @@ import arc.util.io.ReusableByteOutStream;
 import com.xpdustry.claj.common.ClajNet;
 import com.xpdustry.claj.common.packets.Packet;
 
-
-/** {@link mindustry.net.Streamable.StreamBuilder}. */
+// TODO Fix link
+/** {mindustry.net.Streamable.StreamBuilder}. */
 public class StreamBuilder {
   public final int id;
   public final byte type;

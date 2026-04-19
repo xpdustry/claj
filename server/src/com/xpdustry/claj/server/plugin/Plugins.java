@@ -39,8 +39,8 @@ import arc.util.serialization.Jval;
 import com.xpdustry.claj.server.util.JarLoader;
 import com.xpdustry.claj.server.util.JsonSettings;
 
-
-/** Simplified {@link mindustry.mod.Mods} that only handles plugins. */
+// TODO Fix link
+/** Simplified {mindustry.mod.Mods} that only handles plugins. */
 public class Plugins implements ApplicationListener {
   private static final String[] metaFiles = {"plugin.json", "plugin.hjson"};
 

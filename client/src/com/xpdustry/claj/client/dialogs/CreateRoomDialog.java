@@ -47,8 +47,9 @@ import com.xpdustry.claj.common.status.CloseReason;
 
 
 public class CreateRoomDialog extends BaseDialog {
-  /** {@link Styles#togglet} but {@link TextButtonStyle#checked} is {@link Tex#buttonOver}
-   *  instead of {@link Tex#buttonDown}. */
+  /** {@link Styles#togglet} but {@link TextButtonStyle#checked} is "{Tex#buttonOver}"
+   *  instead of "{Tex#buttonDown}". */
+  // TODO Fix links to Tex#buttonDown and Tex#buttonOver
   public static final TextButtonStyle fixedToglet = new TextButtonStyle(Styles.togglet);
   static { fixedToglet.checked = fixedToglet.over; }
 

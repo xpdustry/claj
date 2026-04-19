@@ -26,8 +26,8 @@ import arc.struct.ObjectSet;
 import arc.util.io.ByteBufferInput;
 import arc.util.io.ByteBufferOutput;
 
-
-/** Can be a huge packet, should be sent with {@link StreamSender} instead. */
+// TODO Fix link
+/** Can be a huge packet, should be sent with {StreamSender} instead. */
 public class RoomListPacket extends DelayedPacket {
   public final LongMap<ByteBuffer> states = new LongMap<>();
   public final ObjectSet<Long> protectedRooms = new ObjectSet<>(32);

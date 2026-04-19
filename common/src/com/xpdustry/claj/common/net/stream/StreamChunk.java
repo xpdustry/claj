@@ -22,8 +22,8 @@ package com.xpdustry.claj.common.net.stream;
 import arc.util.io.ByteBufferInput;
 import arc.util.io.ByteBufferOutput;
 
-
-/** {@link mindustry.net.Packets.StreamChunk}. */
+// TODO Fix link
+/** {mindustry.net.Packets.StreamChunk}. */
 public class StreamChunk implements StreamPacket {
   public int id;
   public boolean last;

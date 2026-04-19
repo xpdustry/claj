@@ -222,7 +222,7 @@ public class ClajPingerManager {
     });
   }
 
-  /** @apiNote async operation but blocking new tasks if a ping is already in progress */
+  /** Note: async operation but blocking new tasks if a ping is already in progress */
   public void pingHost(String ip, int port, Cons<ServerState> success, Cons<Exception> failed) {
     submit((pinger, finished) -> {
       pinger.pingHost(ip, port, i -> {

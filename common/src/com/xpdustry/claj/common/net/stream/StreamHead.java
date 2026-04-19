@@ -22,8 +22,8 @@ package com.xpdustry.claj.common.net.stream;
 import arc.util.io.ByteBufferInput;
 import arc.util.io.ByteBufferOutput;
 
-
-/** {@link mindustry.net.Packets.StreamBegin}. */
+// TODO Fix link
+/** {mindustry.net.Packets.StreamBegin}. */
 public class StreamHead implements StreamPacket {
   private static int lastid;
 

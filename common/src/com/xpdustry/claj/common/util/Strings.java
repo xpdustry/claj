@@ -213,8 +213,8 @@ public class Strings extends arc.util.Strings {
    * Compare if the {@code newVersion} is greater than the {@code currentVersion}, e.g. "v146" > "124.1". <br>
    * {@code maxDepth} limits the number of comparisons of version segments, allowing sub-versions to be ignored.
    * (default is 0)
-   *
-   * @apiNote can handle dots and dashes in the version and makes very fast comparison. <br>
+   * <p>
+   * Note: can handle dots and dashes in the version and makes very fast comparison. <br>
    *          Also ignores non-int parts. (e.g. {@code "v1.2-rc36"}, the {@code "rc36"} part will be ignored)
    */
   public static boolean isVersionAtLeast(String currentVersion, String newVersion, int maxDepth) {

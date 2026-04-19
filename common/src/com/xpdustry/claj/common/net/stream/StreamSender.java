@@ -29,9 +29,9 @@ import com.xpdustry.claj.common.ClajNet;
 import com.xpdustry.claj.common.packets.Packet;
 import com.xpdustry.claj.common.util.ByteArrayBufferOutput;
 
-
+// TODO Fix link
 /**
- * {@link mindustry.net.ArcNetProvider.ArcConnection#sendStream(mindustry.net.Streamable)}.
+ * {mindustry.net.ArcNetProvider.ArcConnection#sendStream(mindustry.net.Streamable)}.
  * <p>
  * Note: {@link StreamHead} and {@link StreamChunk} must be registered in {@link ClajNet}.
  */

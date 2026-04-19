@@ -39,9 +39,10 @@ public class ClajRoom implements NetListener {
 
   /** The room id. */
   public final long id;
+  // TODO Fix link
   /**
    * The room id encoded in an url-safe base64 string.
-   * @see com.xpdustry.claj.api.ClajLink
+   * "@see com.xpdustry.claj.api.ClajLink"
    */
   public final String sid;
   /** The host connection of this room. */
