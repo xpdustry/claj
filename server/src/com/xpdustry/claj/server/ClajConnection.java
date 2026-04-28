@@ -19,6 +19,8 @@
 
 package com.xpdustry.claj.server;
 
+import java.util.Objects;
+
 import arc.Core;
 import arc.net.Connection;
 import arc.net.DcReason;
@@ -38,6 +40,7 @@ public class ClajConnection {
   /** hex version of {@link #id}. */
   public final String sid;
   public final Ratekeeper packetRate;
+  protected ClajRoom room;
 
   public ClajConnection(Connection connection) {
     this(connection, AddressUtil.get(connection), AddressUtil.encodeId(connection));
@@ -45,11 +48,24 @@ public class ClajConnection {
 
   /** Internal. */
   public ClajConnection(Connection connection, String address, String encodedId) {
-    this.connection = connection;
-    this.address = address;
+    this.connection = Objects.requireNonNull(connection);
+    this.address = Objects.requireNonNull(address);
     id = connection.getID();
-    sid = encodedId;
+    sid = Objects.requireNonNull(encodedId);
     packetRate = new Ratekeeper();
+  }
+
+  /** The room where the connection is right now. */
+  public ClajRoom currentRoom() {
+    return room;
+  }
+
+  public boolean isRoomHost() {
+    return room != null && room.host == this;
+  }
+
+  protected void removeRoom(ClajRoom room) {
+    if (this.room == room) this.room = null;
   }
 
   public boolean isConnected() {
@@ -79,6 +95,7 @@ public class ClajConnection {
   }
 
   public void close() { close(DcReason.closed); }
+  //TODO: ???
   /** Delay closing to let remaining packets to be sent. */
   public void close(DcReason reason) {
     Core.app.post(() -> closeNow(reason));

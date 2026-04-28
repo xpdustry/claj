@@ -19,6 +19,7 @@
 
 package com.xpdustry.claj.common.packets;
 
+import com.xpdustry.claj.common.status.ClajType;
 
 /**
  * Only exists for compatibility with older versions. <br>
@@ -27,6 +28,9 @@ package com.xpdustry.claj.common.packets;
  * But no reply are sent, so no reason know what was wrong, if the provided values are invalid.
  */
 public class RoomJoinRequestPacket extends RoomJoinPacket {
+  /** Max packet size: roomId + withPassword + password + type */
+  public static final int SIZE = Long.BYTES + 1 + Short.BYTES + ClajType.SIZE;
+
   public RoomJoinPacket toJoinPacket() {
     RoomJoinPacket p = new RoomJoinPacket();
     p.roomId = roomId;

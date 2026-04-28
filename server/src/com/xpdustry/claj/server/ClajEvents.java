@@ -24,14 +24,15 @@ import arc.net.DcReason;
 import com.xpdustry.claj.common.status.*;
 
 
+//TODO: use record classes?
 public class ClajEvents {
   public static class ServerLoadedEvent {}
   public static class ServerStoppingEvent {
     /** Whether the server is still available or not to send packets. (timeout) */
-    public final boolean available;
+    public final boolean stillAvailable;
 
-    public ServerStoppingEvent(boolean available) {
-      this.available = available;
+    public ServerStoppingEvent(boolean stillAvailable) {
+      this.stillAvailable = stillAvailable;
     }
   }
 

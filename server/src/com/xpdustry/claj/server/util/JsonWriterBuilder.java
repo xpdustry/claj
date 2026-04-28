@@ -120,7 +120,7 @@ public class JsonWriterBuilder implements BaseJsonWriter, Poolable {
       while (last.next != null) last = last.next;
 
     } else {
-      if (name != null) value.name = new String(name); // idk how this works
+      if (name != null) value.name = new String(name); // idk why this works
       value.parent = current;
       last.next = value;
       last = last.next;

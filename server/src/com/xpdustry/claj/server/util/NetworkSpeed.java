@@ -48,10 +48,12 @@ public class NetworkSpeed {
     long time = Time.millis();
     if (time - lastDownload >= 1000) {
       synchronized (download) {
-        // Fill holes between calls
-        while (time - lastDownload >= 1000) {
-          download.add(downloadAccum.getAndSet(0));
-          lastDownload += 1000;
+        if (time - lastDownload >= 1000) { // Be sure
+          // Fill holes between calls
+          while (time - lastDownload >= 1000) {
+            download.add(downloadAccum.getAndSet(0));
+            lastDownload += 1000;
+          }
         }
       }
     }
@@ -64,10 +66,12 @@ public class NetworkSpeed {
     long time = Time.millis();
     if (time - lastUpload >= 1000) {
       synchronized (upload) {
-        // Fill holes between calls
-        while (time - lastUpload >= 1000) {
-          upload.add(uploadAccum.getAndSet(0));
-          lastUpload += 1000;
+        if (time - lastUpload >= 1000) { // Be sure
+          // Fill holes between calls
+          while (time - lastUpload >= 1000) {
+            upload.add(uploadAccum.getAndSet(0));
+            lastUpload += 1000;
+          }
         }
       }
     }

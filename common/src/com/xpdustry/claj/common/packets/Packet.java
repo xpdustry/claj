@@ -40,6 +40,9 @@ public interface Packet {
     return (T)this;
   }
 
+  /** @return whether this packet should be allowed or ignored, for this type of endpoint. */
+  default boolean allow(boolean isServer){ return true; }
+
   /** Called when handling the packet (after reading), in another thread. */
   default void handled() {}
 

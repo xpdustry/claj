@@ -63,7 +63,7 @@ public class JoinDialog extends BaseDialog {
       table.add("@claj.join.link").padRight(10f).left();
       table.add(linkField).maxTextLength(64).valid(this::setLink).height(50f).growX().get();
       Vars.ui.addDescTooltip(table.button(Icon.paste, Styles.emptyi, this::importLink).size(50f).padLeft(5)
-                             .get(), "@schematic.copy.import");
+                                  .get(), "@schematic.copy.import");
       table.row().add();
       table.labelWrap(() -> output).left().growX().padTop(5).row();
     }).row();
@@ -161,6 +161,7 @@ public class JoinDialog extends BaseDialog {
         break;
       case serverClosing:
         hide();
+        //$FALL-THROUGH$
       default:
     }
     Vars.ui.showErrorMessage("@claj.reject." + Strings.camelToKebab(reason.name()));

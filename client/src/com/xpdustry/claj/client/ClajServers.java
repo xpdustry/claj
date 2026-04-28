@@ -33,24 +33,21 @@ public class ClajServers {
   public static final ArrayMap<String, String> online = new ArrayMap<>(),
                                                custom = new ArrayMap<>();
 
-  public static synchronized void refreshOnline(Runnable done, Cons<Throwable> failed) {
+  public static void refreshOnline(Runnable done, Cons<Throwable> failed) {
     // Public list
     Http.get(publicServersLink, result -> {
       Jval.JsonMap list = Jval.read(result.getResultAsString()).asObject();
-      online.clear();
-      for (ObjectMap.Entry<String, Jval> e : list)
-        online.put(e.key, e.value.asString());
+      synchronized (online) {
+        online.clear();
+        for (ObjectMap.Entry<String, Jval> e : list)
+          online.put(e.key, e.value.asString());
 
-      //TODO: debug
-      loadCustom();
-      online.putAll(custom);
-
+        //TODO: debug
+        loadCustom();
+        online.putAll(custom);
+      }
       Core.app.post(done);
     }, t -> Core.app.post(() -> failed.get(t)));
-    /*
-    online.put("Chaotic Neutral", "n3.xpdustry.com:7026");
-    done.run();
-    */
   }
 
   @SuppressWarnings("unchecked")

@@ -35,6 +35,7 @@ public class ClajPingerManager {
   protected final ClajProvider provider;
   protected int created;
   protected final ClajPinger[] pingers;
+  protected final Thread[] threads;
   protected final boolean[] reserved;
   protected final Queue<Cons2<ClajPinger, Runnable>> queue = new Queue<>();
 
@@ -43,6 +44,7 @@ public class ClajPingerManager {
     this.workers = workers;
     this.provider = provider;
     pingers = new ClajPinger[workers];
+    threads = new Thread[workers];
     reserved = new boolean[workers];
   }
 
@@ -75,7 +77,10 @@ public class ClajPingerManager {
 
   public ClajPinger ensurePingerPingerStarted(int index) {
     ClajPinger pinger = get(index);
-    if (!pinger.isRunning()) Threads.daemon(getPingerName(index), pinger);
+    if (!pinger.isRunning()) {
+      if (threads[index] != null) threads[index].interrupt(); // in case of
+      threads[index] = Threads.daemon(getPingerName(index), pinger);
+    }
     return pinger;
   }
 
@@ -128,7 +133,7 @@ public class ClajPingerManager {
       if (pinger == null) continue;
       pinger.stop();
       try { pinger.dispose(); }
-      catch (Exception ignored) {}
+      catch (Exception _) {}
     }
   }
 
@@ -173,6 +178,7 @@ public class ClajPingerManager {
     else queue.add(task);
   }
 
+  @SuppressWarnings("resource")
   protected void submit(int index, Cons2<ClajPinger, Runnable> task) {
     reserved[index] = true;
     Runnable t = () -> {
@@ -185,8 +191,13 @@ public class ClajPingerManager {
       });
     };
 
-    if (provider.getExecutor() == null) t.run();
-    else provider.getExecutor().submit(t);
+    try {
+      if (provider.getExecutor() == null) t.run();
+      else provider.getExecutor().submit(t);
+    } catch (Exception e) {
+      reserved[index] = false; // in case of
+      throw e;
+    }
   }
 
   public void joinRoom(ClajLink link, Runnable success, Cons<RejectReason> reject, Cons<Exception> failed) {
@@ -222,7 +233,7 @@ public class ClajPingerManager {
     });
   }
 
-  /** @apiNote async operation but blocking new tasks if a ping is already in progress */
+  /** This queues new tasks if a ping is already in progress. */
   public void pingHost(String ip, int port, Cons<ServerState> success, Cons<Exception> failed) {
     submit((pinger, finished) -> {
       pinger.pingHost(ip, port, i -> {

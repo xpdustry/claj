@@ -21,9 +21,12 @@ package com.xpdustry.claj.api;
 
 import com.xpdustry.claj.common.status.ClajType;
 
+
 public class ClajRoom<T> {
   public final long roomId;
-  public boolean isPublic = true; //Note that for privacy, the server will never notify this.
+  /** Note that for privacy, the server will never notify this. */
+  public boolean isPublic = true;
+  /** Whether the room needs a password to join, or not. */
   public boolean isProtected;
   /** Only presents if the room is public and the server has retrieved his state. */
   public T state;

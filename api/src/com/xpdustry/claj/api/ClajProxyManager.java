@@ -30,6 +30,7 @@ public class ClajProxyManager {
   protected final ClajProvider provider;
   protected int created;
   protected final ClajProxy[] proxies;
+  protected final Thread[] threads;
   protected final boolean[] reserved;
 
   public ClajProxyManager(ClajProvider provider) { this(provider, 1); }
@@ -37,6 +38,7 @@ public class ClajProxyManager {
     this.workers = workers;
     this.provider = provider;
     proxies = new ClajProxy[workers];
+    threads = new Thread[workers];
     reserved = new boolean[workers];
   }
 
@@ -70,8 +72,10 @@ public class ClajProxyManager {
 
   public ClajProxy ensureStarted(int index) {
     ClajProxy proxy = get(index);
-    // TODO: this probably fixes the issue where the room keeps closing when switching of app on android
-    if (!proxy.isRunning()) Threads./*daemon*/thread(getProxyName(index), proxy);
+    if (!proxy.isRunning()) {
+      if (threads[index] != null) threads[index].interrupt(); // in case of
+      threads[index] = Threads.daemon(getProxyName(index), proxy);
+    }
     return proxy;
   }
 
@@ -165,7 +169,7 @@ public class ClajProxyManager {
       proxy.closeRoom();
       proxy.stop();
       try { proxy.dispose(); }
-      catch (Exception ignored) {}
+      catch (Exception _) {}
     }
   }
 
@@ -195,6 +199,7 @@ public class ClajProxyManager {
     return createRoom(index, host, port, created, closed, failed);
   }
 
+  @SuppressWarnings("resource")
   public ClajProxy createRoom(int index, String host, int port, Cons<ClajLink> created, Cons<CloseReason> closed,
                          Cons<Throwable> failed) {
     if (isBusy(index)) {
@@ -214,8 +219,13 @@ public class ClajProxyManager {
       });
     };
 
-    if (provider.getExecutor() == null) task.run();
-    else provider.getExecutor().submit(task);
+    try {
+      if (provider.getExecutor() == null) task.run();
+      else provider.getExecutor().submit(task);
+    } catch (Exception e) {
+      reserved[index] = false; // in case of
+      throw e;
+    }
 
     return proxy;
   }

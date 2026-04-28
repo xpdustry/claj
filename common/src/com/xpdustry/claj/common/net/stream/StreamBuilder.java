@@ -40,6 +40,7 @@ public class StreamBuilder {
   public final ReusableByteOutStream back;
   public final OutputStream stream;
   protected boolean finished;
+  protected int reads;
 
   public StreamBuilder(StreamHead head) {
     id = head.id;
@@ -51,7 +52,7 @@ public class StreamBuilder {
   }
 
   public int size() {
-    return back.size();
+    return reads;
   }
 
   public float progress() {
@@ -70,7 +71,7 @@ public class StreamBuilder {
   }
 
   public void add(StreamChunk chunk) {
-    if (chunk.id != id) throw new IllegalArgumentException("wrong chunk id; " + chunk.id + "!=" + id);
+    if (chunk.id != id) throw new IllegalArgumentException("wrong chunk id: " + chunk.id + "!=" + id);
     add(chunk.data);
     if (chunk.last) finish();
   }
@@ -79,6 +80,7 @@ public class StreamBuilder {
     try {
       stream.write(bytes);
       stream.flush();
+      reads += bytes.length;
     } catch (IOException e) { throw new RuntimeException(e); }
   }
 

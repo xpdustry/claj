@@ -74,7 +74,7 @@ public class StreamReceiver {
       builder.add(chunk.data);
       if (builder.isDone()) {
         builds.remove(chunk.id);
-        // Must be cleared at disconnect
+        // Must be cleared at disconnect for optimization
         //if (builds.isEmpty()) sbuilders.remove(connection.getID());
         return builder.build();
       }
@@ -83,19 +83,26 @@ public class StreamReceiver {
     return null;
   }
 
-  /** Clears all stream builders. */
-  public static void resetAll() {
-    if (sbuilders != null) sbuilders.clear();
-    if (cbuilders != null) cbuilders.clear();
-  }
-
   /** Clears client stream builders. */
   public static void reset() {
-    if (cbuilders != null) cbuilders.clear();
+    if (has()) cbuilders.clear();
   }
 
-  /** Removes server stream builders of a connection. Must be called at disconnect. */
+  /** Removes server stream builders of a connection (or all if null). Must be called at disconnect. */
   public static void reset(Connection connection) {
-    if (sbuilders != null) sbuilders.remove(connection.getID());
+    if (sbuilders == null) return;
+    else if (connection == null) sbuilders.clear();
+    else sbuilders.remove(connection.getID());
+  }
+
+  /** @return whether a client builder is in progress or not. */
+  public static boolean has() {
+    return cbuilders != null && !cbuilders.isEmpty();
+  }
+
+  /** @return whether a server builder is present for the specified connection (or any if null) or not. */
+  public static boolean has(Connection connection) {
+    return sbuilders != null
+        && (connection == null ? !sbuilders.isEmpty() : sbuilders.containsKey(connection.getID()));
   }
 }

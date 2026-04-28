@@ -18,59 +18,70 @@
 
 package com.xpdustry.claj.server.util;
 
+import arc.Application;
 import arc.ApplicationListener;
 import arc.func.Cons2;
 import arc.struct.Seq;
 import arc.util.Log;
+import arc.util.Timekeeper;
 
 
 /** Save periodically the registered {@link Saveable}s and also when the application exit. */
-public class Autosaver implements ApplicationListener {
+public class Autosaver {
   /** Called when a save fail. */
-  public Cons2<Saveable, Throwable> errorHandler;
+  public static Cons2<Saveable, Throwable> errorHandler;
+
+  /** Init the auto saver to run a save every seconds. */
+  public static void init(Application app) {
+    app.addListener(new ApplicationListener() {
+      final Timekeeper rate = Timekeeper.ofSeconds(1);
+      public void update() { if (rate.poll()) save(); }
+      public void dispose() { save(); }
+    });
+  }
 
   /** Adds to the {@code normal} priority. */
-  public void add(Saveable saveable) {
+  public static void add(Saveable saveable) {
     add(saveable, SavePriority.normal);
   }
 
-  public void add(Saveable saveable, SavePriority priority) {
+  public static void add(Saveable saveable, SavePriority priority) {
     remove(saveable);
     priority.saves.add(saveable);
   }
 
-  public void remove(Saveable saveable) {
+  public static void remove(Saveable saveable) {
     for (SavePriority p : SavePriority.all) {
       if (p.saves.remove(saveable)) break;
     }
   }
 
   /** Don't do that! */
-  public void clear() {
+  public static void clear() {
     for (SavePriority p : SavePriority.all) clear(p);
   }
 
   /** Don't do that! */
-  public void clear(SavePriority priority) {
+  public static void clear(SavePriority priority) {
     priority.saves.clear();
   }
 
-  public boolean has(Saveable saveable) {
+  public static boolean has(Saveable saveable) {
     return priorityOf(saveable) != null;
   }
 
-  public boolean has(Saveable saveable, SavePriority priority) {
+  public static boolean has(Saveable saveable, SavePriority priority) {
     return priority.saves.contains(saveable);
   }
 
-  public SavePriority priorityOf(Saveable saveable) {
+  public static SavePriority priorityOf(Saveable saveable) {
     for (SavePriority p : SavePriority.all) {
       if (has(saveable, p)) return p;
     }
     return null;
   }
 
-  public boolean saveNeeded() {
+  public static boolean saveNeeded() {
     for (SavePriority p : SavePriority.all) {
       if (p.saves.contains(Saveable::modified)) return true;
     }
@@ -78,7 +89,7 @@ public class Autosaver implements ApplicationListener {
   }
 
   /** Save all registered things now, only if modified. */
-  public boolean save() {
+  public static boolean save() {
     if (!saveNeeded()) return false;
     for (SavePriority p : SavePriority.all) {
       p.saves.each(Saveable::modified, s -> {
@@ -90,18 +101,6 @@ public class Autosaver implements ApplicationListener {
       });
     }
     return true;
-  }
-
-  /** @see #save() */
-  @Override
-  public void update() {
-    save();
-  }
-
-  /** @see #save() */
-  @Override
-  public void dispose() {
-    save();
   }
 
 

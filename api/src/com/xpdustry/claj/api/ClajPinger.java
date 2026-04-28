@@ -21,6 +21,7 @@ package com.xpdustry.claj.api;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.Selector;
 
 import arc.func.Cons;
@@ -52,7 +53,7 @@ public class ClajPinger extends Client {
                     pingTimeout = connectTimeout,
                     joinTimeout = connectTimeout,
                     infoTimeout = 10 * 1000,
-                    listTimeout = 45 * 1000;
+                    listTimeout = 30 * 1000;
 
   protected final ClajProvider provider;
   protected final ClientReceiver receiver;
@@ -123,6 +124,7 @@ public class ClajPinger extends Client {
   public void run() {
     shutdown = starting = false;
     try { super.run(); }
+    catch (ClosedSelectorException _) {}
     finally { shutdown = true; }
   }
 
@@ -142,6 +144,7 @@ public class ClajPinger extends Client {
     shutdown = true;
   }
 
+  @SuppressWarnings("resource")
   @Override
   public void close() {
     if (canceling) {
@@ -452,8 +455,8 @@ public class ClajPinger extends Client {
 
   protected ByteBuffer makeJoinPacket(RoomJoinRequestPacket request) {
     if (request == null) return null;
-    ByteBuffer buff = ByteBuffer.allocate(64);
-    getSerialization().write(buff, request.toJoinPacket()); // not thread-safe
+    ByteBuffer buff = ByteBuffer.allocate(RoomJoinRequestPacket.SIZE);
+    getSerialization().write(buff, request.toJoinPacket()); // not thread-safe  // sure?
     return (ByteBuffer)buff.flip();
   }
 

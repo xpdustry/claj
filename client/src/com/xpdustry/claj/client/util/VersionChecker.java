@@ -161,7 +161,7 @@ public class VersionChecker {
       if (promptStatus) Log.info("&fb&ly[" + name + "]&fr Found version: @. Current version: @", foundVersion, version);
       if (Strings.isVersionAtLeast(version, foundVersion)) {
         if (promptStatus) Log.info("&fb&ly[" + name + "]&fr Check out this link to upgrade @: @", name,
-                                      Strings.format(repoLinkFormat, repo, latestVersionName));
+                                   Strings.format(repoLinkFormat, repo, latestVersionName));
         finished.get(new UpdateState.Outdated(version, foundVersion, url));
       } else {
         if (promptStatus) Log.info("&fb&ly[" + name + "]&fr Already up-to-date, no need to update.");

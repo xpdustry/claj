@@ -34,7 +34,6 @@ import arc.util.io.FastDeflaterOutputStream;
 import arc.util.serialization.*;
 
 import com.xpdustry.claj.common.util.Strings;
-import com.xpdustry.claj.server.ClajVars;
 
 
 /** Simple re-implementation of {@link arc.Settings} adding choice to store as plain or binary json. */
@@ -108,8 +107,9 @@ public class JsonSettings implements Autosaver.Saveable {
   public void setAutosaved(boolean autosave) {
     if (autosave == autosaved) return;
     autosaved = autosave;
-    if (autosaved) ClajVars.autosave.add(this);
-    else ClajVars.autosave.remove(this);
+    // File should be the last thing saved
+    if (autosaved) Autosaver.add(this, Autosaver.SavePriority.low);
+    else Autosaver.remove(this);
   }
 
   public boolean isAutosaved() {
@@ -144,6 +144,10 @@ public class JsonSettings implements Autosaver.Saveable {
   @Override
   public boolean modified() {
     return modified;// || !exists();
+  }
+
+  public boolean loaded() {
+    return loaded;
   }
 
   /** Loads all values. */
@@ -205,6 +209,7 @@ public class JsonSettings implements Autosaver.Saveable {
                                                  header[1] == (byte)0x9c || header[1] == (byte)0xda);
       }
 
+      @SuppressWarnings("resource")
       JsonValue content = reader.parse(compressed ? new InflaterInputStream(file.read(8192)) : file.read(8192));
 
       if (content != null) {
@@ -220,6 +225,7 @@ public class JsonSettings implements Autosaver.Saveable {
     } catch (Throwable e) { throw new RuntimeException("Error reading file: " + file, e); }
   }
 
+  @SuppressWarnings("resource")
   public synchronized void saveValues(Fi file) {
     try {
       if (plainJson) {
@@ -227,7 +233,8 @@ public class JsonSettings implements Autosaver.Saveable {
           builder.reset();
 
           builder.object();
-          for (OrderedMap.Entry<String, JsonValue> e : values) builder.set(e.key, decoded.get(e.key, e.value));
+          for (OrderedMap.Entry<String, JsonValue> e : values)
+            builder.set(e.key, decoded.get(e.key, e.value));
           builder.close();
 
           if (compressed) Strings.toJson(builder.getJson(), writer, JsonWriter.OutputType.json);
@@ -322,9 +329,13 @@ public class JsonSettings implements Autosaver.Saveable {
     defaults.putAll(objects);
   }
 
+  public synchronized void setDefault(String name, Object value){
+    defaults.put(name, value);
+  }
+
   public synchronized Object getDefault(String name){
     return defaults.get(name);
-}
+  }
 
   public synchronized void putAll(ObjectMap<String, Object> map) {
     map.each(this::put);
@@ -342,13 +353,11 @@ public class JsonSettings implements Autosaver.Saveable {
   public synchronized <K, E> void put(String name, Class<E> elementType, Class<K> keyType, Object value) {
     // Store primitive, null and JsonValue values directly instead of converting it to JsonValue
     if (value == null || isKnownType(value.getClass())) {
-      if (decoded.get(name) == value) return;
       decoded.put(name, value);
-      if (!has(name)) values.put(name, null); // reserve the key
+      values.put(name, null); // reserve the key
       modified = true;
       return;
     } else if (value instanceof JsonValue) {
-      if (decoded.get(name) == value) return;
       values.put(name, (JsonValue)value);
       modified = true;
       return;
@@ -357,7 +366,7 @@ public class JsonSettings implements Autosaver.Saveable {
     builder.reset();
     json.setWriter(builder);
 
-    try { json.writeValue(value, value == null ? null : value.getClass(), elementType); }
+    try { json.writeValue(value, value.getClass(), elementType); }
     catch (Throwable e) { throw new RuntimeException(e); }
 
     values.put(name, builder.getJson());
@@ -423,7 +432,7 @@ public class JsonSettings implements Autosaver.Saveable {
   }
 
   /** Put and return {@code def} if the {@code name} key is not found */
-  protected synchronized <T, K, E> T getOrPut(String name, Class<T> type, T def) {
+  public synchronized <T, K, E> T getOrPut(String name, Class<T> type, T def) {
     if (!has(name)) {
       put(name, def);
       return def;

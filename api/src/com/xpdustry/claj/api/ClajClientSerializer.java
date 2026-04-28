@@ -31,6 +31,7 @@ import arc.util.io.ByteBufferOutput;
 import com.xpdustry.claj.common.ClajNet;
 import com.xpdustry.claj.common.net.FrameworkSerializer;
 import com.xpdustry.claj.common.packets.Packet;
+import com.xpdustry.claj.common.packets.RawPacket;
 
 
 public class ClajClientSerializer implements NetSerializer, FrameworkSerializer {
@@ -53,30 +54,28 @@ public class ClajClientSerializer implements NetSerializer, FrameworkSerializer 
 
   public Packet readClaj(ByteBuffer buffer) {
     Packet packet = ClajNet.newPacket(buffer.get());
-    ByteBufferInput readi = read.get();
-    readi.buffer = buffer;
-    packet.read(readi);
+    if(!packet.allow(false)) throw new ArcNetException("Invalid packet type for endpoint: " + packet.getClass());
+    ByteBufferInput in = read.get();
+    in.buffer = buffer;
+    packet.read(in);
     return packet;
   }
 
   @Override
   public void write(ByteBuffer buffer, Object object) {
-    if (object instanceof ByteBuffer buf) {
-      buffer.put(buf);
-
-    } else if (object instanceof FrameworkMessage framework) {
-      buffer.put(ClajNet.frameworkId);
-      writeFramework(buffer, framework);
-
-    } else if (object instanceof Packet packet) {
-      buffer.put(ClajNet.id).put(ClajNet.getId(packet));
-      ByteBufferOutput writeo = write.get();
-      writeo.buffer = buffer;
-      packet.write(writeo);
-
-    } else {
-      throw new ArcNetException("Unknown packet type: " + object.getClass());
+    switch (object) {
+      case ByteBuffer buf -> buffer.put(buf);
+      case FrameworkMessage framework -> writeFramework(buffer.put(ClajNet.frameworkId), framework);
+      case Packet packet -> writeClaj(buffer, packet);
+      default -> throw new ArcNetException("Unknown packet type: " + object.getClass());
     }
+  }
+
+  public void writeClaj(ByteBuffer buffer, Packet packet) {
+    if (!(packet instanceof RawPacket)) buffer.put(ClajNet.id).put(ClajNet.getId(packet));
+    ByteBufferOutput out = write.get();
+    out.buffer = buffer;
+    packet.write(out);
   }
 
   /*

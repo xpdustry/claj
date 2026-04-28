@@ -24,6 +24,7 @@ import java.io.InputStream;
 
 import arc.net.Connection;
 import arc.net.InputStreamSender;
+import arc.util.Threads;
 
 import com.xpdustry.claj.common.ClajNet;
 import com.xpdustry.claj.common.packets.Packet;
@@ -36,6 +37,8 @@ import com.xpdustry.claj.common.util.ByteArrayBufferOutput;
  * Note: {@link StreamHead} and {@link StreamChunk} must be registered in {@link ClajNet}.
  */
 public class StreamSender extends InputStreamSender {
+  private static final ThreadLocal<StreamChunk> chunk = Threads.local(StreamChunk::new);
+
   public final Connection connection;
   public final InputStream input;
   public final byte type;
@@ -44,6 +47,7 @@ public class StreamSender extends InputStreamSender {
   public final boolean compressed;
   protected int id, written;
 
+  /** Stream is directly started. */
   public StreamSender(Connection connection, InputStream stream, byte type, int length,
                       int chunkSize, boolean isCompressed) {
     super(stream, chunkSize);
@@ -69,7 +73,7 @@ public class StreamSender extends InputStreamSender {
 
   @Override
   protected Object next(byte[] bytes) {
-    StreamChunk chunk = new StreamChunk();
+    StreamChunk chunk = StreamSender.chunk.get();
     written += bytes.length;
     chunk.id = id;
     chunk.last = written >= length;

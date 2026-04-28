@@ -60,7 +60,7 @@ public class ClajLink {
 
     try { uri = new URI(PROTOCOL, null, host, port, '/'+encodedRoomId, null, null); }
     // This error can only happen when the host is invalid
-    catch (URISyntaxException e) { throw new IllegalArgumentException("Invalid host"); }
+    catch (URISyntaxException _) { throw new IllegalArgumentException("Invalid host"); }
   }
 
   public ClajLink(String host, int port, long roomId) {
@@ -76,7 +76,7 @@ public class ClajLink {
 
     try { uri = new URI(PROTOCOL, null, host, port, '/'+encodedRoomId, null, null); }
     // This error can only happen when the host is invalid
-    catch (URISyntaxException e) { throw new IllegalArgumentException("Invalid host"); }
+    catch (URISyntaxException _) { throw new IllegalArgumentException("Invalid host"); }
   }
 
   @Override
@@ -96,7 +96,7 @@ public class ClajLink {
   }
 
   /** @throws IllegalArgumentException if the link is invalid */
-  public static ClajLink fromString(String link) {
+  public static ClajLink fromString(String link) throws IllegalArgumentException {
     if (!link.contains("://") && !link.startsWith(SCHEME)) link = SCHEME+link;
     if (link.startsWith(PROTOCOL) &&
         (!link.startsWith(SCHEME) || link.length() == SCHEME.length()))

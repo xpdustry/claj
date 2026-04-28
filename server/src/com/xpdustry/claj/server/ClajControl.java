@@ -90,13 +90,18 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
           suggested = line.replace(response.runCommand, closest.text);
         } else Log.err("Invalid command. Type @ for help.", "'help'");
         break;
+
       case fewArguments:
       case manyArguments:
         Log.err("Too " + response.type.name().replace("Arguments", "") + " command arguments. Usage: @",
                 response.command.text + " " + response.command.paramText);
         break;
-      case valid: suggested = null;
-      default: break;
+
+      case valid:
+        suggested = null;
+        //$FALL-THROUGH$
+
+      default:
     }
   }
 
@@ -108,16 +113,16 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
                  "&fr - &lw" + c.description));
     });
 
-    register("version", "Display server version info.", args -> {
-      Log.info("CLaJ Version: @ (@)", ClajVars.version, ClajVars.version.majorVersion);
-      Log.info("Java Version: @", OS.javaVersion);
-    });
-
+    //TODO: also print version, cpu usage, uptime, etc
     register("status", "Display status of server and rooms.", args -> {
-      Log.info("@ rooms, @ client" + (ClajVars.relay.conToRoom.size < 2 ? "" : "s") +
-               ", @ connection" + (ClajVars.relay.getConnections().length < 2 ? "." : "s."),
-               ClajVars.relay.rooms.size, ClajVars.relay.conToRoom.size, ClajVars.relay.getConnections().length);
+      Log.info("Version: CLaJ @ (@), Java @.", ClajVars.version, ClajVars.version.majorVersion, OS.javaVersion);
       Log.info("@ FPS, @ used.", Core.graphics.getFramesPerSecond(), Strings.formatBytes(Core.app.getJavaHeap()));
+      java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+
+      Log.info("@ rooms, @ client" + (ClajVars.relay.connections.size < 2 ? "" : "s") +
+               ", @ connection" + (ClajVars.relay.getConnections().length < 2 ? "." : "s."),
+               ClajVars.relay.rooms.size, ClajVars.relay.connections.size, ClajVars.relay.getConnections().length);
+
       NetworkSpeed net = ClajVars.relay.networkSpeed;
       if (net != null) {
         Log.info("Speed: @/s up, @/s down. Total: @ up, @ down.",
@@ -133,7 +138,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       ClajVars.relay.rooms.eachValue(r -> {
         NetworkSpeed n = r.transferredPackets;
         Log.info("&lk|&fr @: @ client" + (r.clients.isEmpty() ? "" : "s") +
-                 ". Rate: @ p/s in, @ p/s out. Total: @ packets in, @ packets out.",
+                 ". @ p/s in, @ p/s out (@ in, @ out).",
                  r.sid, r.clients.size + 1, Mathf.ceil(n.uploadSpeed()), Mathf.ceil(n.downloadSpeed()),
                  n.totalUpload(), n.totalDownload());
       });
@@ -157,7 +162,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       ClajVars.relay.stop(Core.app::exit);
     });
 
-    register("plugins", "[name...]", "Display all loaded plugins or information about a specific one.", args -> {
+    register("plugins", "[name...]", "Display loaded plugins or information of a specific one.", args -> {
       if (args.length == 0) {
          if (!ClajVars.plugins.list().isEmpty()) {
           Log.info("Plugins: [total: @]", ClajVars.plugins.list().size);
@@ -198,6 +203,8 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       });
     });
 
+    //TODO: command that display room info and state
+
     register("refresh", "<room|list> [id|type] [force]", "Refresh a room state or a room list.", args -> {
       switch (args[0]) {
         case "room":
@@ -206,7 +213,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
             return;
           }
 
-          ClajRoom room = ClajVars.relay.get(args[1]);
+          ClajRoom room = ClajVars.relay.getRoom(args[1]);
           if (room == null) {
             Log.err("Room @ not found.", args[1]);
             return;
@@ -235,14 +242,12 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
             return;
           }
 
-          byte[] t = args[1].getBytes(Strings.utf8);
-          if (t.length < 1 || t.length > ClajType.SIZE) {
+          ClajType type = ClajType.of(args[1]);
+
+          if (type == null) {
             Log.err("Invalid CLaJ type.");
             return;
-          }
-
-          ClajType type = new ClajType(t);
-          if (!ClajVars.relay.types.containsKey(type)) {
+          } else if (!ClajVars.relay.types.containsKey(type)) {
             Log.err("No room with type @ found.", type);
             return;
           }
@@ -261,119 +266,121 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       }
     });
 
-    register("debug", "[on|off]", "Enable/Disable the debug log level.", args -> {
-      if (args.length == 0) Log.info("Debug log level is @.", ClajConfig.debug ? "enabled" : "disabled");
+    register("config", "[name] [default|value...]", "Configure server settings.", args -> {
+      if (args.length == 0) {
+        Log.info("Config values: [total: @]", ClajConfig.all.size);
+        ClajConfig.all.each(f -> {
+          Log.info("&lk|&fr @: @", f.key, "&lc&fi" + f.get());
+          for (String line : f.desc.split("\n")) {
+            Log.info("&lk| |&lw " + line);
+          }
+          Log.info("&lk|&fr");
+        });
+        return;
+      }
 
-      else if (Strings.isFalse(args[0])) {
-        Log.level = Log.LogLevel.info;
-        ClajConfig.debug = false;
-        ClajConfig.save();
-        Log.info("Debug log level disabled.");
+      ClajConfig.Field<Object> field = ClajConfig.get(args[0]);
 
-      } else if (Strings.isTrue(args[0])) {
-        Log.level = Log.LogLevel.debug;
-        ClajConfig.debug = true;
-        ClajConfig.save();
-        Log.info("Debug log level enabled.");
+      if (field == null) {
+        Log.err("No setting named '@' found.", args[0]);
+        return;
+      } else if (args.length == 1) {
+        Log.info("'@' is currently at @.", field.key, field.get());
+        Log.info("Default value is: @.", field.defaultValue);
+        return;
+      } else if (args[1].equals("default")) {
+        field.setDefault();
+        Log.info("'@' set to default value.", field.key);
+        return;
+      }
 
-      } else Log.err("Invalid argument.");
+      try {
+        Object value = field.decode(args[1]);
+        field.set(value);
+        Log.info("'@' set to @.", field.key, value);
+      } catch (IllegalArgumentException e) {
+        Log.err("Invalid value for setting '@'.", field.key);
+      }
     });
 
-    register("spam-limit", "[amount]", "Sets packet spam limit. (0 to disable)", args -> {
+    register("blacklist", "[add|remove|clear] [IP]", "Manage the IP blacklist.", args -> {
       if (args.length == 0) {
-        if (ClajConfig.spamLimit == 0) Log.info("Current limit: disabled.");
-        else Log.info("Current limit: @ packets per @.", ClajConfig.spamLimit, "3 seconds");
-        return;
-      }
-
-      int limit = Strings.parseInt(args[0]);
-      if (limit < 0) {
-        Log.err("Invalid input.");
-        return;
-      }
-      ClajConfig.spamLimit = limit;
-      if (ClajConfig.spamLimit == 0) Log.info("Packet spam limit disabled.");
-      else Log.info("Packet spam limit set to @ packets per @.", ClajConfig.spamLimit, "3 seconds");
-      ClajConfig.save();
-    });
-
-    register("join-limit", "[amount]", "Sets join request limit. (0 to disable)", args -> {
-      if (args.length == 0) {
-        if (ClajConfig.joinLimit == 0) Log.info("Current limit: disabled.");
-        else Log.info("Current limit: @ requests per @.", ClajConfig.joinLimit, "minute");
-        return;
-      }
-
-      int limit = Strings.parseInt(args[0]);
-      if (limit < 0) {
-        Log.err("Invalid input.");
-        return;
-      }
-      ClajConfig.joinLimit = limit;
-      if (ClajConfig.joinLimit == 0) Log.info("Join request limit disabled.");
-      else Log.info("Join reqest limit set to @ requests per @.", ClajConfig.joinLimit, "minute");
-      ClajConfig.save();
-    });
-
-    register("blacklist", "[add|del] [IP]", "Manage the IP blacklist.", args -> {
-      if (args.length == 0) {
-        if (!ClajConfig.blacklist.isEmpty()) {
-          Log.info("Blacklist: [total: @]", ClajConfig.blacklist.size);
-          Strings.tableify(ClajConfig.blacklist.toSeq(), 70).each(a -> Log.info("&lk|&fr @", a));
+        if (!ClajConfig.blacklist.get().isEmpty()) {
+          Log.info("Blacklist: [total: @]", ClajConfig.blacklist.get().size);
+          Strings.tableify(ClajConfig.blacklist.get().toSeq(), 70).each(a -> Log.info("&lk|&fr @", a));
         } else Log.info("Blacklist is empty.");
-
+        return;
       } else if (args.length == 1) {
         Log.err("Missing IP argument.");
+        return;
+      }
 
-      } else if (args[0].equals("add")) {
-        if (ClajConfig.blacklist.add(args[1])) {
-          ClajConfig.save();
-          Log.info("IP added to blacklist.");
-        } else Log.err("IP already blacklisted.");
+      switch (args[0]) {
+        case "add":
+          if (ClajConfig.blacklist.getChange().add(args[1]))
+            Log.info("IP added to blacklist.");
+          else Log.err("IP already blacklisted.");
+          break;
 
-      } else if (args[0].equals("del")) {
-        if (ClajConfig.blacklist.remove(args[1])) {
-          ClajConfig.save();
-          Log.info("IP removed from blacklist.");
-        } else Log.err("IP not blacklisted.");
+        case "remove":
+          if (ClajConfig.blacklist.getChange().remove(args[1]))
+            Log.info("IP removed from blacklist.");
+          else Log.err("IP not blacklisted.");
+          break;
 
-      } else Log.err("Invalid argument. Must be 'add' or 'del'.");
+        case "clear":
+          ClajConfig.blacklist.getChange().clear();
+          Log.info("Blacklist cleared.");
+          break;
+
+        default:
+          Log.err("Invalid argument. Must be 'add', 'remove' or 'clear'.");
+      }
     });
 
-    register("warn-deprecated", "[on|off]", "Warn the client if it's CLaJ version is obsolete.", args -> {
+    register("type-blacklist", "[add|remove|clear] [type...]", "Manage the blacklisted room types.", args -> {
       if (args.length == 0) {
-        Log.info("Warn message when a client using an obsolete CLaJ version: @.",
-                 ClajConfig.warnDeprecated ? "enabled" : "disabled");
+        if (!ClajConfig.typeBlacklist.get().isEmpty()) {
+          Log.info("Type blacklist: [total: @]", ClajConfig.typeBlacklist.get().size);
+          Strings.tableify(ClajConfig.typeBlacklist.get().toSeq().map(ClajType::type), 70)
+                 .each(a -> Log.info("&lk|&fr @", a));
+        } else Log.info("Type blacklist is empty.");
+        return;
+      } else if (args.length == 1) {
+        Log.err("Missing type argument.");
+        return;
+      }
 
-      } else if (Strings.isFalse(args[0])) {
-        ClajConfig.warnDeprecated = false;
-        ClajConfig.save();
-        Log.info("Warn message disabled.");
+      ClajType type;
+      switch (args[0]) {
+        case "add":
+          type = ClajType.of(args[1]);
+          if (type == null) {
+            Log.err("Invalid CLaJ type.");
+            return;
+          } else if (ClajConfig.typeBlacklist.getChange().add(type))
+            Log.info("Type added to blacklist.");
+          else Log.err("Type already blacklisted.");
+          break;
 
-      } else if (Strings.isTrue(args[0])) {
-        ClajConfig.warnDeprecated = true;
-        ClajConfig.save();
-        Log.info("Warn message enabled.");
+        case "remove":
+          type = ClajType.of(args[1]);
+          if (type == null) {
+            Log.err("Invalid CLaJ type.");
+            return;
+          } else if (ClajConfig.typeBlacklist.getChange().remove(type))
+            Log.info("Type removed from blacklist.");
+          else Log.err("Type not blacklisted.");
+          break;
 
-      } else Log.err("Invalid argument.");
-    });
+        case "clear":
+          ClajConfig.typeBlacklist.getChange().clear();
+          Log.info("Type nblacklist cleared.");
+          break;
 
-    register("warn-closing", "[on|off]", "Warn all rooms when the server is closing.", args -> {
-      if (args.length == 0) {
-        Log.info("Warn message when closing the server: @.",
-                 ClajConfig.warnClosing ? "enabled" : "disabled");
-
-      } else if (Strings.isFalse(args[0])) {
-        ClajConfig.warnClosing = false;
-        ClajConfig.save();
-        Log.info("Warn message disabled.");
-
-      } else if (Strings.isTrue(args[0])) {
-        ClajConfig.warnClosing = true;
-        ClajConfig.save();
-        Log.info("Warn message enabled.");
-
-      } else Log.err("Invalid argument.");
+        default:
+          Log.err("Invalid argument. Must be 'add', 'remove' or 'clear'.");
+      }
     });
 
     register("say", "<roomId|all> <text...>", "Send a message to a room or all rooms.", args -> {
@@ -383,7 +390,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
         return;
       }
 
-      ClajRoom room = ClajVars.relay.get(args[0]);
+      ClajRoom room = ClajVars.relay.getRoom(args[0]);
       if (room != null) {
         room.message(args[1]);
         Log.info("Message sent to room @.", args[0]);
@@ -397,7 +404,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
         return;
       }
 
-      ClajRoom room = ClajVars.relay.get(args[0]);
+      ClajRoom room = ClajVars.relay.getRoom(args[0]);
       if (room != null) {
         room.popup(args[1]);
         Log.info("Popup sent to the host of room @.", args[0]);

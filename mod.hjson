@@ -12,7 +12,7 @@ CLaJ (Copy Link and Join) allows you to play with your friends, just by creating
 '''
 version: "2.4"
 minGameVersion: "146"
-minGameVersionV8: "154" // Will be renamed to 'minGameVersion' if using the 'client:buildV8' gradle task
+legacyCompatible: true // Be compatible with v7 and v8
 java: true
 hidden: true
 repo: xpdustry/claj

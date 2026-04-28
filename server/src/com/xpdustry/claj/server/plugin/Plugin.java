@@ -35,7 +35,7 @@ public interface Plugin {
     return ClajVars.plugins.getConfigFolder(this);
   }
 
-  /** @return a settings handle for this plugin of file {@code 'plugins/<plugin-name>/config.json'}. */
+  /** @return a settings handle for this plugin, of file {@code 'plugins/<plugin-name>/config.json'}. */
   default JsonSettings getConfig() {
     return ClajVars.plugins.getConfig(this);
   }
@@ -51,6 +51,6 @@ public interface Plugin {
   /** Register any commands. */
   default void registerCommands(CommandHandler handler) {}
 
-  /** Dispose any resources of the plugin. */
+  /** Dispose any resources created by the plugin. */
   default void dispose() {}
 }

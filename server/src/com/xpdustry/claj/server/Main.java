@@ -57,13 +57,11 @@ public class Main implements ApplicationListener {
 
   @Override
   public void init() {
-    ClajVars.autosave = new Autosaver();
     ClajConfig.load();
-    Log.level = ClajConfig.debug ? Log.LogLevel.debug : Log.LogLevel.info; // set log level
+    Log.level = ClajConfig.debug.get() ? Log.LogLevel.debug : Log.LogLevel.info; // set log level
     ClajPackets.init();
 
-    app.addListener(ClajVars.autosave);
-    app.addListener(ClajVars.control = new ClajControl());
+    Autosaver.init(app);
     app.addListener(ClajVars.plugins = new Plugins(ClajVars.pluginsDirectory, ClajVars.control));
     app.addListener(ClajVars.relay = new ClajRelay(ClajVars.networkSpeed));
 

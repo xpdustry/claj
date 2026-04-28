@@ -21,6 +21,8 @@ package com.xpdustry.claj.common.status;
 
 
 public enum RejectReason {
+  /** Rejected without indications. */
+  error,
   /** The server is closing */
   serverClosing,
   /** No room with this id, or id is {@code -1} (which is an invalid id). */

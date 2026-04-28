@@ -33,7 +33,7 @@ import com.xpdustry.claj.common.util.AddressUtil;
 
 /** A client listener that can delegate packet decoding and reception to the main app. */
 public class ClientReceiver implements NetListener {
-  protected final ObjectMap<Class<?>, Cons<?>> listeners = new ObjectMap<>();
+  protected final ObjectMap<Class<?>, Cons<?>> listeners = new ObjectMap<>(32);
   protected Cons<Runnable> delegator;
   protected NetListenerFilter filter;
 
@@ -108,6 +108,8 @@ public class ClientReceiver implements NetListener {
 
   @SuppressWarnings("unchecked")
   public void received(Packet packet) {
+    if (!packet.allow(false)) return; // Throw away unwanted packets
+
     try {
       packet.handled();
 

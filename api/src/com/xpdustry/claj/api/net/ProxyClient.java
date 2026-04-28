@@ -24,12 +24,18 @@ import java.net.InetAddress;
 import java.nio.channels.ClosedSelectorException;
 
 import arc.func.Cons;
-import arc.net.*;
+import arc.net.ArcNetException;
+import arc.net.Client;
+import arc.net.Connection;
+import arc.net.DcReason;
+import arc.net.NetListener;
+import arc.net.NetSerializer;
 import arc.struct.IntMap;
+import arc.struct.Queue;
 import arc.util.Log;
 import arc.util.Reflect;
 
-import com.xpdustry.claj.common.net.*;
+import com.xpdustry.claj.common.net.ClientReceiver;
 import com.xpdustry.claj.common.util.Structs;
 
 
@@ -39,7 +45,7 @@ import com.xpdustry.claj.common.util.Structs;
  * - Packet reception must be done manually. <br>
  * - Notifying methods must be called ({@link #conConnected}, {@link #conDisconnected}, {@link #conReceived} and
  * {@link #conIdle}). <br>
- * - Packet making methods must be defined ({@link #makeWrapPacket} and {@link #makeClosePacket}).
+ * - Packet making methods must be defined ({@link #makeConWrapPacket} and {@link #makeConClosePacket}).
  */
 public abstract class ProxyClient extends Client {
   public static int defaultTimeout = 5000; //ms
@@ -58,9 +64,16 @@ public abstract class ProxyClient extends Client {
   protected volatile boolean shutdown = true, starting, ignoreExceptions, connecting;
   protected ClientReceiver receiver;
 
-  public ProxyClient(int writeBufferSize, int objectBufferSize, NetSerializer serialization, Cons<Runnable> taskPoster) {
+  /** Packet queue to avoid a buffer overflow. */
+  protected final Queue<Object> packetQueue = new Queue<>();
+  protected int writeBufferThreshold;
+  protected volatile boolean hasQueued = false; // used for fast check
+
+  public ProxyClient(int writeBufferSize, int objectBufferSize, NetSerializer serialization,
+                     Cons<Runnable> taskPoster) {
     super(writeBufferSize, objectBufferSize, serialization);
     receiver = new ClientReceiver(this, taskPoster);
+    writeBufferThreshold = (int)(writeBufferSize * 0.8f);
   }
 
   /**
@@ -94,13 +107,12 @@ public abstract class ProxyClient extends Client {
       while(!shutdown) {
         try {
           update(250);
-          // update idle
-          for (VirtualConnection c : connections) {
-            if (c.isIdle()) c.notifyIdle0();
-          }
-        } catch (ClosedSelectorException e) {
+          updateIdle();
+          flushPacketQueue();
+        } catch (ClosedSelectorException _) {
+          close();
           break;
-        } catch (IOException e) {
+        } catch (IOException _) {
           close();
         } catch (Exception e) {
           if (!ignoreExceptions) {
@@ -109,7 +121,8 @@ public abstract class ProxyClient extends Client {
               Reflect.set(Connection.class, this, "lastProtocolError", net);
             close();
             throw e;
-          } else Log.err("Ignored Exception", e);
+          }
+          Log.err("Ignored Exception", e);
           if (!(e instanceof ArcNetException)) break;
         }
       }
@@ -122,7 +135,7 @@ public abstract class ProxyClient extends Client {
     if (getUpdateThread() != null) {
       shutdown = true;
       try { getUpdateThread().join(5000); }
-      catch (InterruptedException ignored) {}
+      catch (InterruptedException _) {}
       getUpdateThread().interrupt(); // force stop
     }
     starting = true;
@@ -191,12 +204,46 @@ public abstract class ProxyClient extends Client {
   public int send(VirtualConnection con, Object object, boolean tcp) {
     if(object == null) throw new IllegalArgumentException("object cannot be null.");
     Object p = makeConWrapPacket(con.getID(), object, tcp);
-    return tcp ? sendTCP(p) : sendUDP(p);
+    return tcp ? sendSafeTCP(p) : sendUDP(p);
   }
 
   /**
-   * Can be used notify the server to close the connection when not created by the proxy.
-   * Indeed, this will not trigger callbacks.
+   * Because all {@link VirtualConnection}s shares the same tcp buffer, it can be filled quickly. <br>
+   * This tries to queue packets when needed, to avoid an overflow.
+   */
+  public int sendSafeTCP(Object object) {
+    // Fast path
+    if (!hasQueued && getTcpWriteBufferSize() <= writeBufferThreshold)
+      return sendTCP(object);
+
+    synchronized (packetQueue) {
+      if (hasQueued || getTcpWriteBufferSize() > writeBufferThreshold) {
+        packetQueue.add(object);
+        hasQueued = true;
+        return 0;
+      }
+    }
+    return sendTCP(object);
+  }
+
+  protected void flushPacketQueue() {
+    if (!hasQueued) return; // fast check
+    synchronized (packetQueue) {
+      while (!packetQueue.isEmpty() && getTcpWriteBufferSize() <= writeBufferThreshold)
+        sendTCP(packetQueue.removeFirst());
+      hasQueued = !packetQueue.isEmpty();
+    }
+  }
+
+  protected void updateIdle() {
+    for (VirtualConnection c : connections) {
+      if (c.isIdle()) c.notifyIdle0();
+    }
+  }
+
+  /**
+   * Can be used notify the server to close the connection when not created by the proxy. <br>
+   * This will not trigger callbacks.
    */
   protected void close(int conId, DcReason reason) {
     sendTCP(makeConClosePacket(conId, reason));
@@ -215,6 +262,7 @@ public abstract class ProxyClient extends Client {
     removeConnection(con);
   }
 
+  /** @return never {@code null}. */
   protected VirtualConnection conConnected(int conId, long addressHash) {
     VirtualConnection con = getConnection(conId);
     if (con == null) {

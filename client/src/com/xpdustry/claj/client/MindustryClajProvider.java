@@ -34,7 +34,6 @@ import arc.util.io.ByteBufferOutput;
 import mindustry.Vars;
 import mindustry.gen.Call;
 import mindustry.net.ArcNetProvider.PacketSerializer;
-import mindustry.net.Host;
 import mindustry.net.Net.NetProvider;
 import mindustry.net.NetworkIO;
 
@@ -102,8 +101,8 @@ public class MindustryClajProvider implements ClajProvider {
 
   @SuppressWarnings("unchecked")
   @Override
-  public Host readRoomState(long roomId, ClajType type, ByteBuffer buff) {
-    return getType().equals(type) ? NetworkIO.readServerData(0, "<unknown>", buff) : null;
+  public <T> T readRoomState(long roomId, ClajType type, ByteBuffer buff) {
+    return getType().equals(type) ? (T)NetworkIO.readServerData(0, "<unknown>", buff) : null;
   }
 
   @Override
@@ -152,7 +151,7 @@ public class MindustryClajProvider implements ClajProvider {
 
   @Override
   public void showPopup(ClajProxy proxy, String text) {
-    // UI#showText place the title to the wrong side =/
+    // UI#showText places the title to the wrong side =/
     //Vars.ui.showText("[scarlet][[CLaJ Server][] ", text);
     Vars.ui.showOkText("[scarlet][[CLaJ Server][] ", text, () -> {});
   }

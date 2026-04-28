@@ -119,4 +119,12 @@ public class ClajType {
     else if (data.length > SIZE) data = Arrays.copyOf(data, max);
     return data;
   }
+
+  // Maker
+
+  /** @return the parsed {@link ClajType}, or {@code null} if it's invalid. */
+  public static ClajType of(String str) {
+    byte[] t = str.trim().getBytes(Strings.utf8);
+    return t.length < 1 || t.length > SIZE ? null : new ClajType(t);
+  }
 }

@@ -1,23 +1,21 @@
 import com.xpdustry.toxopid.spec.ModMetadata
 import com.xpdustry.toxopid.spec.ModPlatform
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.util.regex.Pattern
 
 plugins {
   id "java"
-  id "com.xpdustry.toxopid" version "4.1.2"
-  id "net.kyori.indra.publishing" version "3.1.3"
+  id "com.xpdustry.toxopid" version "4.2.0"
+  id "net.kyori.indra.publishing" version "4.0.0"
 }
 
 def metadata = ModMetadata.fromJson(file("mod.hjson"))
-group = "com.xpdustry"
-version = metadata.version
-description = metadata.description
 
 allprojects {
   apply plugin: "java"
   apply plugin: "com.xpdustry.toxopid"
+  
+  group = "com.xpdustry.${metadata.name}"
+  version = metadata.version
+  description = metadata.description
   
   sourceSets.main.java.srcDirs = ["src"]
   sourceSets.main.resources.srcDirs = ["resources"]
@@ -27,33 +25,21 @@ allprojects {
   repositories {
     mavenCentral()
     maven { url "https://maven.xpdustry.com/mindustry" }
+    maven { url "https://maven.xpdustry.com/releases" }
     maven { url "https://www.jitpack.io" }
   }
 
   // Force java 1.8
   compileJava {
     targetCompatibility = JavaVersion.VERSION_1_8
-    sourceCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_21
     options.encoding = "UTF-8"
     options.release = 8
-    
-    // Needed due to Anuken's modified jabel
-    options.fork = true
-    options.forkOptions.jvmArgs += [
-      "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
-      "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
-      "--add-opens=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED",
-      "--add-opens=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED",
-      "--add-opens=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED",
-      "--add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
-      "--add-opens=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
-      "--add-opens=java.base/sun.reflect.annotation=ALL-UNNAMED"
-    ]
+    options.compilerArgs += ["-Xlint:-options", "-Xlint:unchecked"]
   }
   
   dependencies {
-    // Temporary: added record desugarization. See: https://github.com/xpdustry/jabel
-    annotationProcessor rootProject.files("libs/jabel.jar") //"com.github.Anuken:jabel:0.9.0"
+    annotationProcessor "com.xpdustry:jabel:1.1.0"
   }
 }
 
@@ -82,10 +68,8 @@ project(":client") {
     compileOnly toxopid.dependencies.mindustryCore
   }
   
-  jar {
-    from {
-      configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-    }
+  jar.from {
+     configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
   }
 
   mergeJar {
@@ -108,44 +92,18 @@ project(":client") {
 	
   // Includes android dex
   build.dependsOn mergeJar
-
-  // Make compatible with Mindustry v8. Will just replace 'minGameVersion' in mod.hjson.
-  task buildV8(type: Jar, dependsOn: [mergeJar]) {
-    def modHjsonText = rootProject.file("mod.hjson").getText("UTF-8")
-    def mv8Match = (modHjsonText =~ /(?m)^\s*minGameVersionV8\s*:\s*"([^"]+)"/)
-    def v8MinGameVersion = mv8Match.find() ? mv8Match.group(1) : null
-    if (v8MinGameVersion == null) throw new Exception("mod.hjson is missing 'minGameVersionV8'.")
-
-    archiveFileName = "${metadata.name}-${project.name}-v8.jar"
-
-    // Start from the jar produced by mergeJar, but drop its mod.hjson entry.
-    from({ zipTree(mergeJar.archiveFile.get().asFile) }, { exclude "mod.hjson" })
-    
-    // Add a filtered mod.hjson at the root of the jar.
-    from(rootDir) {
-      include "mod.hjson"
-      //includeEmptyDirs = false
-      filter {
-        if (it == null) return null
-        if (it ==~ /^\s*minGameVersionV8\s*:.*$/) return null
-        if (it ==~ /^\s*minGameVersion\s*:.*$/) return "minGameVersion: \"${v8MinGameVersion}\""
-        return it
-      }
-    }
-
-    doLast {
-      copy {
-        from buildV8
-        into rootDir
-      }
-    }
+  
+  // For testing
+  runMindustryDesktop {
+    mods.from(mergeJar)
   }
+  task run(dependsOn: runMindustryDesktop) {}
 }
 
 project(":server") {
   ext.mainClassName = "com.xpdustry.claj.server.Main"
   toxopid.platforms = [ModPlatform.SERVER]
-  toxopid.compileVersion = "v154"
+  toxopid.compileVersion = "v157"
 
   dependencies {
     implementation project(":common")
@@ -159,7 +117,6 @@ project(":server") {
     manifest.attributes["Main-Class"] = project.mainClassName
     manifest.attributes["Claj-Version"] = metadata.version
     
-    // Includes arc libs
     from {
       configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
@@ -172,6 +129,7 @@ project(":server") {
       }
     }
     
+    //TODO: use arc-lite
     //exclude "arc/assets/**", "arc/audio/**", "arc/input/**", "arc/scene/**", "arc/util/noise/**", "arc/util/viewport/**"
   }
   
@@ -185,8 +143,10 @@ project(":server") {
   }
 }
 
-build.dependsOn "client:buildV8"
-task buildAll(type: Jar, dependsOn: ["client:build", "client:buildV8", "server:build"]) {}
+// To shut up Javadoc
+javadoc.options{
+    addStringOption("Xdoclint:none", "-quiet")
+}
 
 
 // Publishing

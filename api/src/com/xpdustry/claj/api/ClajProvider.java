@@ -58,14 +58,15 @@ public interface ClajProvider {
    */
   ClajVersion getVersion();
 
-  /** Listener added to all virtual connections. Can be {@code null}. */
+  /** Listener to add to all virtual connections. Can be {@code null}. */
   default NetListener getConnectionListener(ClajProxy proxy) { return null; }
 
   /**
    * The actual room state, in an encoded form. <br>
    * Will be requested by the server if needed. {@code null} can be returned to not provide state.
    * <p>
-   * <strong>The buffer size must be less than {@code 2^16} ({@code 65536}). </strong>
+   * <b>The buffer size must be less than {@code 2^16} ({@code 65536}). </b>
+   * @apiNote The buffer must not be flipped rn.
    */
   default ByteBuffer writeRoomState(ClajProxy proxy) { return null; }
   /** Decode the room state received by the server. */
@@ -83,7 +84,7 @@ public interface ClajProvider {
   void connectClient(String host, int port, Runnable success, ByteBuffer joinPacket);
 
   /**
-   * <strong>Essential for the protocol to work!</strong>
+   * <b>Essential for the protocol to work!</b>
    * <p>
    * This defines how encapsulated packets are serialized and deserialized. <br>
    * This method is called once by the global manager ({@link Claj}).

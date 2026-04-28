@@ -24,6 +24,7 @@ import java.nio.ByteBuffer;
 import arc.Events;
 import arc.net.*;
 import arc.struct.IntMap;
+import arc.util.Threads;
 import arc.util.Time;
 
 import com.xpdustry.claj.common.packets.*;
@@ -35,6 +36,13 @@ import com.xpdustry.claj.server.util.NetworkSpeed;
 
 
 public class ClajRoom implements NetListener {
+  // Packet caching
+  private static final ThreadLocal<ConnectionJoinPacket> cjp = Threads.local(ConnectionJoinPacket::new);
+  private static final ThreadLocal<ConnectionClosedPacket> ccp = Threads.local(ConnectionClosedPacket::new);
+  private static final ThreadLocal<ConnectionPacketWrapPacket> cwp = Threads.local(ConnectionPacketWrapPacket::new);
+  private static final ThreadLocal<ConnectionIdlingPacket> cip = Threads.local(ConnectionIdlingPacket::new);
+
+
   protected boolean closed;
 
   /** The room id. */
@@ -96,7 +104,7 @@ public class ClajRoom implements NetListener {
   public void connected(ClajConnection connection) {
     if (closed || connection == null) return;
 
-    ConnectionJoinPacket p = new ConnectionJoinPacket();
+    ConnectionJoinPacket p = cjp.get();
     p.conID = connection.id;
     p.addressHash = AddressUtil.hash(connection.connection);
     host.send(p); // Assumes the host is still connected
@@ -122,13 +130,14 @@ public class ClajRoom implements NetListener {
       return;
 
     } else if (host.isConnected()) {
-      ConnectionClosedPacket p = new ConnectionClosedPacket();
+      ConnectionClosedPacket p = ccp.get();
       p.conID = connection.id;
       p.reason = reason;
       host.send(p);
     }
 
     clients.remove(connection.id);
+    connection.removeRoom(this);
     Events.fire(new ConnectionLeftEvent(connection, this));
   }
 
@@ -147,6 +156,7 @@ public class ClajRoom implements NetListener {
       close();
     } else {
       clients.remove(connection.id);
+      connection.removeRoom(this);
       Events.fire(new ConnectionLeftEvent(connection, this));
     }
   }
@@ -171,6 +181,11 @@ public class ClajRoom implements NetListener {
     }
   }
 
+  public void received(ClajConnection connection, Object object) {
+    if (connection == null) return;
+    received(connection.connection, object);
+  }
+
   /**
    * Unwraps the packet and sends it to the corresponding connection. <br>
    * This will notify the host if the connection is not found.
@@ -185,11 +200,16 @@ public class ClajRoom implements NetListener {
 
     // Notify that this connection doesn't exist, this case normally never happen
     } else if (host.isConnected()) {
-      ConnectionClosedPacket p = new ConnectionClosedPacket();
+      ConnectionClosedPacket p = ccp.get();
       p.conID = wrap.conID;
       p.reason = DcReason.error;
       host.send(p);
     }
+  }
+
+  public void received(ClajConnection connection, ConnectionPacketWrapPacket wrap) {
+    if (connection == null) return;
+    received(connection.connection, wrap);
   }
 
   /**
@@ -200,32 +220,44 @@ public class ClajRoom implements NetListener {
     if (closed || connection == null || !host.isConnected() ||
         !clients.containsKey(connection.getID())) return;
 
-    ConnectionPacketWrapPacket p = new ConnectionPacketWrapPacket();
+    ConnectionPacketWrapPacket p = cwp.get();
     p.conID = connection.getID();
     p.raw = raw.data;
     host.send(p);
     transferredPackets.downloadMark();
   }
 
-  /** Notifies the host of an idle connection. */
-  @Override
-  public void idle(Connection connection) {
-    ClajConnection con = ClajRelay.toClajCon(connection);
-    if (con != null) idle(con);
+  public void received(ClajConnection connection, RawPacket raw) {
+    if (connection == null) return;
+    received(connection.connection, raw);
   }
 
   /** Notifies the host of an idle connection. */
-  public void idle(ClajConnection connection) {
+  @Override
+  public void idle(Connection connection) {
     if (closed || connection == null) return;
 
     if (isHost(connection)) {
       // Ignore if this is the room host
 
-    } else if (host.isConnected() && clients.containsKey(connection.id)) {
-      ConnectionIdlingPacket p = new ConnectionIdlingPacket();
-      p.conID = connection.id;
+    } else if (host.isConnected() && clients.containsKey(connection.getID())) {
+      ConnectionIdlingPacket p = cip.get();
+      p.conID = connection.getID();
       host.send(p);
     }
+  }
+
+  /** Notifies the host of an idle connection. */
+  public void idle(ClajConnection connection) {
+    if (connection == null) return;
+    idle(connection.connection);
+  }
+
+  /** @return {@code true} if {@link #type} is {@code null}, the provided one is the same or {@code null},
+   *          if {@link ClajConfig#acceptNoType} is {@code true}.
+   */
+  public boolean allowsType(ClajType type) {
+    return this.type == null || this.type.equals(type) || type == null && ClajConfig.acceptNoType.get();
   }
 
   /** Notifies the room id to the host. Must be called once. */
@@ -265,7 +297,11 @@ public class ClajRoom implements NetListener {
     host.send(p);
 
     host.close();
-    for (ClajConnection c : clients.values()) c.close();
+    for (ClajConnection c : clients.values()) {
+      c.close();
+      c.removeRoom(this);
+    }
+    host.removeRoom(this);
     clients.clear();
 
     Events.fire(new RoomClosedEvent(this));
@@ -285,6 +321,7 @@ public class ClajRoom implements NetListener {
   public void message(MessageType message) {
     if (closed) return;
 
+    // Useless to cache packet here.
     ClajMessagePacket p = new ClajMessagePacket();
     p.message = message;
     host.send(p);
@@ -294,6 +331,7 @@ public class ClajRoom implements NetListener {
   public void popup(String text) {
     if (closed) return;
 
+    // Useless to cache packet here.
     ClajPopupPacket p = new ClajPopupPacket();
     p.message = text;
     host.send(p);
@@ -342,17 +380,19 @@ public class ClajRoom implements NetListener {
   }
 
   public boolean isStateRequestTimedOut() {
-    return !requestingState || Time.timeSinceMillis(lastRequestedState) >= ClajConfig.stateTimeout;
+    return !requestingState || Time.timeSinceMillis(lastRequestedState) >= ClajConfig.stateTimeout.get();
   }
   public boolean isStateRequestTimedOut(long time) {
-    return !requestingState || time - lastRequestedState >= ClajConfig.stateTimeout;
+    return !requestingState || time - lastRequestedState >= ClajConfig.stateTimeout.get();
   }
 
   public boolean isStateOutdated() {
-    return Time.timeSinceMillis(lastReceivedState) >= ClajConfig.stateLifetime;
+    int lifetime = ClajConfig.stateLifetime.get();
+    return lifetime > 0 && Time.timeSinceMillis(lastReceivedState) >= lifetime;
   }
   public boolean isStateOutdated(long time) {
-    return time - lastReceivedState >= ClajConfig.stateLifetime;
+    int lifetime = ClajConfig.stateLifetime.get();
+    return lifetime > 0 && time - lastReceivedState >= lifetime;
   }
 
   public boolean shouldRequestState() {

@@ -35,14 +35,14 @@ public class ClajNet {
   public static final byte id = -4;
 
   /** Maximum number of packet that can be registered. */
-  public static final int MAX_PACKETS = 255;
+  public static final int MAX_PACKETS = 256;
 
   protected static final ObjectMap<Class<?>, Byte> packetToId = new ObjectMap<>(32);
   protected static final ObjectMap<Byte, Prov<?>> idToPacket = new ObjectMap<>(32);
 
   /**
    * Registers a new packet type for serialization. Ignores if already registered.
-   * @throws IllegalArgumentException if no id is available for this packet. ({@code 255} packets max)
+   * @throws IllegalArgumentException if no id is available for this packet. ({@code 256} packets max)
    */
   public static <T extends Packet> void register(Prov<T> cons) {
     Class<?> type = cons.get().getClass();

@@ -377,7 +377,7 @@ public class Strings extends arc.util.Strings {
   public static String jsonPrettyPrint(JsonValue object, OutputType outputType) {
     StringWriter out = new StringWriter();
     try { jsonPrettyPrint(object, out, outputType, 0); }
-    catch (IOException ignored) { return ""; }
+    catch (IOException _) { return ""; }
     return out.toString();
   }
 

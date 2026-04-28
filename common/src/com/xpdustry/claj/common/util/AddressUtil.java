@@ -33,7 +33,7 @@ public class AddressUtil {
     }
 
     try { return InetAddress.getByAddress(bytes); }
-    catch (Exception ignored) { return null; } // cannot happen
+    catch (Exception _) { return null; } // cannot happen
   }
 
   /** Hashes the address then converts it back to an address. */

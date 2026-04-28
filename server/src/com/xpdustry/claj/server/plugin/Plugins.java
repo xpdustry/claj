@@ -154,7 +154,7 @@ public class Plugins implements ApplicationListener {
         try {
           Class.forName(s.getClassName(), false, e.key);
           return (Class<? extends Plugin>)e.value;
-        } catch (Throwable ignored) {}
+        } catch (Throwable _) {}
       }
     }
     return null;
@@ -231,7 +231,7 @@ public class Plugins implements ApplicationListener {
         Fi zip = file.isDirectory() ? file : new ZipFi(file);
         if(zip.list().length == 1 && zip.list()[0].isDirectory()) zip = zip.list()[0];
         meta = findMeta(zip);
-      } catch (Throwable ignored) {}
+      } catch (Throwable _) {}
 
       if (meta == null || meta.name == null) continue;
       metas.add(meta);
@@ -340,7 +340,7 @@ public class Plugins implements ApplicationListener {
     for (String name : metaFiles) {
       if ((metaFile = file.child(name)).exists()) break;
     }
-    if (!metaFile.exists()) return null;
+    if (metaFile == null || !metaFile.exists()) return null;
 
     PluginMeta meta = json.fromJson(PluginMeta.class, Jval.read(metaFile.readString()).toString(Jval.Jformat.plain));
     meta.cleanup();
@@ -445,6 +445,7 @@ public class Plugins implements ApplicationListener {
       if (!str.isEmpty()) mainFile = mainFile.child(str);
     }
 
+    //TODO: version check
     //make sure the main class exists before loading it; if it doesn't just don't put it there
     //if the plugin is explicitly marked as java, try loading it anyway
     if (mainFile.exists() && initialize) {
