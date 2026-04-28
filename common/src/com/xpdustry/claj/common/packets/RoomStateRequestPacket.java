@@ -22,4 +22,9 @@ package com.xpdustry.claj.common.packets;
 
 public class RoomStateRequestPacket implements Packet {
   public static final RoomStateRequestPacket instance = new RoomStateRequestPacket();
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

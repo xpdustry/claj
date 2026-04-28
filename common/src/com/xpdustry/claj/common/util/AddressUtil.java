@@ -51,10 +51,10 @@ public class AddressUtil {
   }
 
   public static String encodeId(int conId) {
-    char[] out = new char[10];
+    char[] out = new char[(Integer.SIZE >> 2) + 2];
     out[0] = '0';
     out[1] = 'x';
-    for (int i=9; i>=2; i--) {
+    for (int i=out.length-1; i>=2; i--) {
       out[i] = "0123456789abcdef".charAt(conId & 0xF);
       conId >>>= 4;
     }

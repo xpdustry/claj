@@ -71,7 +71,7 @@ public class JoinDialog extends BaseDialog {
     buttons.defaults().size(140f, 60f).pad(4f);
     buttons.button("@cancel", this::hide);
     buttons.button("@ok", this::joinRoom)
-           .disabled(button -> !valid || linkField.getText().isEmpty() || Vars.net.active());
+           .disabled(_ -> !valid || linkField.getText().isEmpty() || Vars.net.active());
 
     //Add the 'Join via CLaJ' button in the join dialog
     addButton();
@@ -137,7 +137,6 @@ public class JoinDialog extends BaseDialog {
           if (Vars.net.client()) Claj.get().stopPingers();
         }, 60);
 
-        //TODO: run preconnect event?
         Vars.ui.join.hide();
         ClajUi.browser.hide();
         hide();
@@ -172,11 +171,11 @@ public class JoinDialog extends BaseDialog {
     Vars.ui.loadfrag.show("@reconnecting");
     Timer.Task[] ping = {null}; // i love java lambdas...
     ping[0] = Timer.schedule(() -> {
-      Claj.get().pingHost(lastLink.host, lastLink.port, host -> {
+      Claj.get().pingHost(lastLink.host, lastLink.port, _ -> {
         if(!ping[0].isScheduled()) return;
         ping[0].cancel();
         joinRoom(lastLink, lastPassword);
-      }, e -> {});
+      }, _ -> {});
     }, 1, 1);
 
     Vars.ui.loadfrag.setButton(() -> {

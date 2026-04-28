@@ -54,4 +54,9 @@ public class RoomListPacket extends DelayedPacket {
       } else write.writeChar(0);
     }
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

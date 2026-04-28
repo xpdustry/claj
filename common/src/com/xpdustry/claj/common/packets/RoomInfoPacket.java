@@ -45,4 +45,9 @@ public class RoomInfoPacket extends RoomStatePacket {
     type.write(write.buffer);
     super.write(write);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

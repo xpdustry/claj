@@ -59,7 +59,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
               catch (Throwable e) { Log.err(e); }
             });
           }
-        }
+        } catch (Throwable e) { Log.err("Server Control", e); }
       })
     );
   }
@@ -105,6 +105,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
     }
   }
 
+  @SuppressWarnings("unused")
   public void registerCommands() {
     register("help", "Display the command list.", args -> {
       Log.info("Commands:");

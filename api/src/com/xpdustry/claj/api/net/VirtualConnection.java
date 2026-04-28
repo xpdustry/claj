@@ -58,9 +58,8 @@ public class VirtualConnection extends Connection {
    * or will quietly close it if requested by the server.
    */
   private volatile boolean isConnected = true;
-  //TODO: make idling calculated by the host, not the server, to save bandwidth.
-  /** The server will notify if the client is idling. */
-  private volatile boolean isIdling = true;
+  /** Not thread-safe for a little bit of random. */
+  private boolean isIdling = true, sentThisCycle = false;
 
   public VirtualConnection(ProxyClient proxy, int id, long addressHash) {
     this.proxy = proxy;
@@ -105,8 +104,14 @@ public class VirtualConnection extends Connection {
   public void notifyIdle0() { dispatcher.idle(this); }
   public void notifyReceived0(Object object) { dispatcher.received(this, object); }
 
-  public void setIdle() { isIdling = true; }
-  public void resetIdle() { isIdling = false; }
+  public void updateIdle() {
+    isIdling = !sentThisCycle;
+    sentThisCycle = false;
+  }
+  public void resetIdle() {
+    sentThisCycle = true;
+    isIdling = false;
+  }
   public void setConnected0(boolean connected) { isConnected = connected; }
 
   @Override

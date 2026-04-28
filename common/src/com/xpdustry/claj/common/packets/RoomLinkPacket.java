@@ -36,4 +36,9 @@ public class RoomLinkPacket extends DelayedPacket {
   public void write(ByteBufferOutput write) {
     write.writeLong(roomId);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

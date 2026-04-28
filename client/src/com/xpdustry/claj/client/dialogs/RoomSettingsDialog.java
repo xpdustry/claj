@@ -102,7 +102,8 @@ public class RoomSettingsDialog extends BaseDialog {
         general.table(inner -> {
           Vars.ui.addDescTooltip(inner.add(isProtected).left().get(), "@claj.settings.protected.help");
           inner.button(Icon.edit, fixedEmptyi, 30, () -> ClajUi.password.show(this::setPassword, false))
-               .disabled(t -> !isProtected.isChecked()).padLeft(20f).marginBottom(5).get().getImage().setScale(0.9f);
+               .disabled(_ -> !isProtected.isChecked()).padLeft(20f).marginBottom(5).get().getImage()
+               .setScale(0.9f);
         }).left().padTop(5f).row();
         Vars.ui.addDescTooltip(general.add(autoHost).left().disabled(true).padTop(5f).padBottom(5f)
                                       .get(), "@claj.settings.auto-host.help"); // WIP
@@ -199,8 +200,6 @@ public class RoomSettingsDialog extends BaseDialog {
     players.setText(Core.settings.getInt("totalPlayers", Groups.player.size()) + limit);
     playersClaj.setText((proxy instanceof MindustryClajProxy mp ? mp.getMindustryConnectionsSize() : "??") + limit);
     if (proxy.isConnected()) {
-      Claj.get().proxies.get().updateReturnTripTime();
-      // the correct ping will be displayed the next time the dialog is open
       ping.setText(Iconc.chartBar + " " + proxy.getReturnTripTime() + "ms");
     } else ping.setText(Iconc.chartBar + " ---ms");
   }

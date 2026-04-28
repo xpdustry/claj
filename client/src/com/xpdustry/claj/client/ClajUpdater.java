@@ -36,7 +36,7 @@ import com.xpdustry.claj.client.util.VersionChecker;
 public class ClajUpdater {
   /** Schedules an update check for 2 secs after the client has finished loading. */
   public static void schedule() {
-    Events.on(EventType.ClientLoadEvent.class, e ->
+    Events.on(EventType.ClientLoadEvent.class, _ ->
       Timer.schedule(ClajUpdater::checkForUpdate, 2)
     );
   }

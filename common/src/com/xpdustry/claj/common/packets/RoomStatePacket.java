@@ -45,4 +45,9 @@ public class RoomStatePacket extends DelayedPacket {
     RawPacket.write(state, write);
     state.limit(limit);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return isServer; 
+  }
 }

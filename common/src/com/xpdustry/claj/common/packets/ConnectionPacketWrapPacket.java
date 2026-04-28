@@ -56,7 +56,7 @@ public class ConnectionPacketWrapPacket extends ConnectionWrapperPacket {
     serializer.write(this, write);
   }
 
-
+  
   public interface Serializer {
     void read(ConnectionPacketWrapPacket packet, ByteBufferInput read);
     void write(ConnectionPacketWrapPacket packet, ByteBufferOutput write);

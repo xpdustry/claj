@@ -22,4 +22,9 @@ package com.xpdustry.claj.common.packets;
 
 public class RoomInfoDeniedPacket implements Packet {
   public static final RoomInfoDeniedPacket instance = new RoomInfoDeniedPacket();
+  
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

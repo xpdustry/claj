@@ -37,4 +37,9 @@ public class ConnectionJoinPacket extends ConnectionWrapperPacket {
     super.write(write);
     write.writeLong(addressHash);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

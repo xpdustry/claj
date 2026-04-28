@@ -37,4 +37,9 @@ public class RoomClosedPacket extends DelayedPacket {
   public void write(ByteBufferOutput write) {
     write.writeByte(reason.ordinal());
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

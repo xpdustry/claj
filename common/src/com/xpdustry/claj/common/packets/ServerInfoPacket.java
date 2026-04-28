@@ -38,4 +38,9 @@ public class ServerInfoPacket extends DelayedPacket {
   public void write(ByteBufferOutput write) {
     write.writeInt(version);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

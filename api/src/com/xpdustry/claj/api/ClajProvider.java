@@ -79,7 +79,7 @@ public interface ClajProvider {
    * Connect the client to the specified server. <br>
    * @param success can be {@code null} and must be called when connected successfully.
    * @param joinPacket must be send in the client connection after connected successfully.
-   *                   The server has a queue in case this condition is not fully met.
+   *                   The server has little a queue in case this condition is not fully met.
    */
   void connectClient(String host, int port, Runnable success, ByteBuffer joinPacket);
 

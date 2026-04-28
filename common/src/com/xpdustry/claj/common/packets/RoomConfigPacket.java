@@ -50,4 +50,9 @@ public class RoomConfigPacket extends DelayedPacket {
     write.writeByte(data);
     write.writeShort(password);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return isServer; 
+  }
 }

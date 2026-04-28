@@ -61,4 +61,9 @@ public class RoomJoinPacket extends RoomLinkPacket {
     write.writeShort(password);
     type.write(write.buffer);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return isServer; 
+  }
 }

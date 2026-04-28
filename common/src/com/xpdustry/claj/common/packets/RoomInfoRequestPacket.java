@@ -20,4 +20,9 @@
 package com.xpdustry.claj.common.packets;
 
 
-public class RoomInfoRequestPacket extends RoomLinkPacket {}
+public class RoomInfoRequestPacket extends RoomLinkPacket {
+  @Override
+  public boolean allow(boolean isServer) { 
+    return isServer; 
+  }
+}

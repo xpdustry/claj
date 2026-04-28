@@ -29,37 +29,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Artifacts
-        run: gradle build
+        run: gradle release
  
-      - name: Upload Client Artifact to Actions
+      - name: Upload Artifacts to Actions
         uses: actions/upload-artifact@v7
         with:
-          name: "${{ github.event.repository.name }}-client"
-          path: client/build/libs/${{ github.event.repository.name }}-client*.jar
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload API Artifact to Actions
-        uses: actions/upload-artifact@v7
-        with:
-          name: "${{ github.event.repository.name }}-api"
-          path: api/build/libs/${{ github.event.repository.name }}-api*.jar
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload Common Artifact to Actions
-        uses: actions/upload-artifact@v7
-        with:
-          name: "${{ github.event.repository.name }}-common"
-          path: common/build/libs/${{ github.event.repository.name }}-common*.jar
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload Server Artifact to Actions
-        uses: actions/upload-artifact@v7
-        with:
-          name: "${{ github.event.repository.name }}-server"
-          path: server/build/libs/${{ github.event.repository.name }}-server*.jar
+          path: build/release/*.jar
           if-no-files-found: error
           archive: false
 

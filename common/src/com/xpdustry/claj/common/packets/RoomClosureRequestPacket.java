@@ -22,4 +22,9 @@ package com.xpdustry.claj.common.packets;
 
 public class RoomClosureRequestPacket implements Packet {
   public static final RoomClosureRequestPacket instance = new RoomClosureRequestPacket();
+  
+  @Override
+  public boolean allow(boolean isServer) { 
+    return isServer; 
+  }
 }

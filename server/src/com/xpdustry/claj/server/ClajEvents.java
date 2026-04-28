@@ -163,5 +163,32 @@ public class ClajEvents {
     }
   }
 
-
+  public static class RoomInfoRejectedEvent {
+    public final ClajConnection connection;
+    /** Not {@code nul} means that action was denied because the room is closing. */
+    public final ClajRoom room;
+    /** 
+     * {@code true} if the action was denied because of rate limit. <br>
+     * if both {@link #room} and field are {@code null} and {@code false}, 
+     * this means that the room was not found.
+     */
+    public final boolean rateLimited;
+    
+    public RoomInfoRejectedEvent(ClajConnection connection, ClajRoom room, boolean rateLimited) {
+      this.connection = connection;
+      this.room = room;
+      this.rateLimited = rateLimited;
+    }
+  }
+  public static class RoomListRejectedEvent {
+    public final ClajConnection connection;
+    public final ClajType type;
+    public final boolean rateLimited;
+    
+    public RoomListRejectedEvent(ClajConnection connection, ClajType type, boolean rateLimited) {
+      this.connection = connection;
+      this.type = type;
+      this.rateLimited = rateLimited;
+    }
+  }
 }

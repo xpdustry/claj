@@ -37,5 +37,10 @@ public class ClajTextMessagePacket extends DelayedPacket {
   @Override
   public void write(ByteBufferOutput write) {
     Strings.writeUTF(write, Strings.truncate(message, 1024));
+  }  
+  
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
   }
 }

@@ -69,7 +69,7 @@ public class RoomPasswordDialog extends BaseDialog {
       table.button(Icon.undo, this::popLetter);
     });
 
-    connectButton = buttons.button("@claj.password.connect", this::confirm).disabled(b -> !valid).get();
+    connectButton = buttons.button("@claj.password.connect", this::confirm).disabled(_ -> !valid).get();
     buttons.button("@cancel", this::hide);
 
     hidden(() -> {

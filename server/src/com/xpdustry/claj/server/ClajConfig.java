@@ -82,7 +82,7 @@ public class ClajConfig {
       this.desc = desc == null ? "" : desc;
       this.defaultValue = def;
       this.type = def == null ? null : (Class<T>)def.getClass();
-      this.changed = changed == null ? v -> {} : changed;
+      this.changed = changed == null ? _ -> {} : changed;
 
       if (register) all.add(this);
       Autosaver.add(this, Autosaver.SavePriority.normal);
@@ -161,9 +161,9 @@ public class ClajConfig {
       return (T)switch (defaultValue) {
         case null -> value.equals("null");
         // Nothing to decode
-        case String s -> value;
+        case String _ -> value;
         // Handle boolean manually for more matching cases
-        case Boolean b -> {
+        case Boolean _ -> {
           if (Strings.isTrue(value)) yield true;
           else if (Strings.isFalse(value)) yield false;
           else throw new IllegalArgumentException("invalid boolean value");
@@ -192,20 +192,16 @@ public class ClajConfig {
       Ignored for room hosts.
       """.trim(),
       """
-      Limit of room join requests per minute.
-      The server will act as the room is not found.
-      This can prevent room searching.
-      Set to {@code 0} to disable.
+      Limit of room join requests per minute. The server will act as the room is not found.
+      This can prevent room searching. Set to &fb0&fw to disable.
       """.trim(),
       """
       Limit of room info requests per minute per ip address.
-      The server will act as the room is not found.
-      Set to 0 to disable.
+      The server will act as the room is not found. Set to &fb0&fw to disable.
       """.trim(),
       """
       Limit of room list requests per minute per ip address.
-      The server will return an empty list.
-      Set to 0 to disable.
+      The server will return an empty list. Set to &fb0&fw to disable.
       """.trim(),
       """
       Whether to accept or not clients who attempt to join a room without specifying their CLaJ implementation.
@@ -216,9 +212,10 @@ public class ClajConfig {
       This do not warn ones who trying to join a room.
       """.trim(),
       "Warn all rooms when the server is closing.",
-      "Time to wait before exiting the server when closing it. (in seconds)",
-      "...", //TODO
-      "...",
+      "The time to wait before exiting the server when closing it. (in seconds)",
+      "The time after which a new room status will be requested, if necessary. (in ms)",
+      "The time to wait for the room's new status. (in ms)",
+      "The time after which a new status will be requested to all rooms, if necessary. (in ms)",
       """
       Listing public rooms can be very long when requesting states,
       this defines the time before the list is send as is, even some state was not received.
@@ -228,16 +225,16 @@ public class ClajConfig {
   public static Field<Boolean> debug = new Field<>("debug", fieldDescs[0], false,
                                                    v -> Log.level = v ? Log.LogLevel.debug : Log.LogLevel.info);
   public static Field<Integer> spamLimit = new Field<>("spam-limit", fieldDescs[1], 300);
-  public static Field<Integer> joinLimit = new Field<>("join-limit", fieldDescs[2], 40);
+  public static Field<Integer> joinLimit = new Field<>("join-limit", fieldDescs[2], 30);
   public static Field<Integer> infoLimit = new Field<>("info-limit", fieldDescs[3], 30);
-  public static Field<Integer> listLimit = new Field<>("list-limit", fieldDescs[4], 10);
+  public static Field<Integer> listLimit = new Field<>("list-limit", fieldDescs[4], 30);
   public static Field<Boolean> acceptNoType = new Field<>("accept-no-type", fieldDescs[5], true);
   public static Field<Boolean> warnDeprecated = new Field<>("warn-deprecated", fieldDescs[6], true);
   public static Field<Boolean> warnClosing = new Field<>("warn-closing", fieldDescs[7], true);
   public static Field<Float> closeWait = new Field<>("close-wait", fieldDescs[8], 10f);
   public static Field<Integer> stateLifetime = new Field<>("state-lifetime", fieldDescs[9], 60 * 1000);
   public static Field<Integer> stateTimeout = new Field<>("state-timeout", fieldDescs[10], 20 * 1000);
-  public static Field<Integer> listLifetime = new Field<>("list-lifetime", fieldDescs[11], 45 * 1000);
+  public static Field<Integer> listLifetime = new Field<>("list-lifetime", fieldDescs[11], 60 * 1000);
   public static Field<Integer> listTimeout = new Field<>("list-timeout", fieldDescs[12], 30 * 1000);
 
   // Other fields having their own command

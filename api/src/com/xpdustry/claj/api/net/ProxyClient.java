@@ -63,6 +63,7 @@ public abstract class ProxyClient extends Client {
   protected NetListener conListener;
   protected volatile boolean shutdown = true, starting, ignoreExceptions, connecting;
   protected ClientReceiver receiver;
+  protected long lastPing;
 
   /** Packet queue to avoid a buffer overflow. */
   protected final Queue<Object> packetQueue = new Queue<>();
@@ -106,6 +107,7 @@ public abstract class ProxyClient extends Client {
     try {
       while(!shutdown) {
         try {
+          updatePing();
           update(250);
           updateIdle();
           flushPacketQueue();
@@ -226,7 +228,7 @@ public abstract class ProxyClient extends Client {
     return sendTCP(object);
   }
 
-  protected void flushPacketQueue() {
+  public void flushPacketQueue() {
     if (!hasQueued) return; // fast check
     synchronized (packetQueue) {
       while (!packetQueue.isEmpty() && getTcpWriteBufferSize() <= writeBufferThreshold)
@@ -235,9 +237,20 @@ public abstract class ProxyClient extends Client {
     }
   }
 
-  protected void updateIdle() {
+  /** Tries to mimic connection idling. */
+  public void updateIdle() {
     for (VirtualConnection c : connections) {
+      c.updateIdle();
       if (c.isIdle()) c.notifyIdle0();
+    }
+  }
+  
+  public void updatePing() {
+    if (!isConnected()) return;
+    long now = System.currentTimeMillis();
+    if (now - lastPing > 1) {
+      lastPing = now;
+      updateReturnTripTime();
     }
   }
 

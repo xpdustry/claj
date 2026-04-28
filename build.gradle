@@ -20,6 +20,7 @@ allprojects {
   sourceSets.main.java.srcDirs = ["src"]
   sourceSets.main.resources.srcDirs = ["resources"]
   toxopid.compileVersion = "v${metadata.minGameVersion}"
+  ext.compileVersionV8 = "157"
   ext.arcNet = "com.github.Anuken.Arc:arcnet:${toxopid.compileVersion}" //toxopid.dependencies.arcnet
   
   repositories {
@@ -80,30 +81,22 @@ project(":client") {
       include "mod.hjson"
       include "icon.png"
     }
-
-    // Copy the builded jar to the working directory
-    doLast {
-      copy {
-        from mergeJar
-        into rootDir
-      }
-    }
   }
 	
   // Includes android dex
   build.dependsOn mergeJar
   
   // For testing
-  runMindustryDesktop {
-    mods.from(mergeJar)
+  runMindustryDesktop.mods.from(mergeJar)
+  task run(dependsOn: runMindustryDesktop) {
+    //toxopid.compileVersion = "v${project.compileVersionV8}"
   }
-  task run(dependsOn: runMindustryDesktop) {}
 }
 
 project(":server") {
   ext.mainClassName = "com.xpdustry.claj.server.Main"
   toxopid.platforms = [ModPlatform.SERVER]
-  toxopid.compileVersion = "v157"
+  toxopid.compileVersion = "v${project.compileVersionV8}"
 
   dependencies {
     implementation project(":common")
@@ -120,15 +113,7 @@ project(":server") {
     from {
       configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
-    
-    // Copy the builded jar to the working directory
-    doLast {
-      copy {
-        from jar
-        into rootDir
-      }
-    }
-    
+
     //TODO: use arc-lite
     //exclude "arc/assets/**", "arc/audio/**", "arc/input/**", "arc/scene/**", "arc/util/noise/**", "arc/util/viewport/**"
   }
@@ -137,10 +122,19 @@ project(":server") {
     mainClass = project.mainClassName
     classpath = sourceSets.main.runtimeClasspath
     standardInput = System.in
-    workingDir = buildDir
+    workingDir = temporaryDir
     args 7000 // default port
     jvmArgs "-DClaj-Version=${metadata.version}" // claj version
   }
+}
+
+task release(dependsOn: subprojects.build, type: Copy) {
+  subprojects.each {
+    from it.layout.buildDirectory.dir("libs") 
+    include "${metadata.name}-*.jar"
+  }
+  into layout.buildDirectory.dir("release")
+  //into rootDir
 }
 
 // To shut up Javadoc

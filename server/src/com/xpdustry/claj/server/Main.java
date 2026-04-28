@@ -62,6 +62,7 @@ public class Main implements ApplicationListener {
     ClajPackets.init();
 
     Autosaver.init(app);
+    app.addListener(ClajVars.control = new ClajControl());
     app.addListener(ClajVars.plugins = new Plugins(ClajVars.pluginsDirectory, ClajVars.control));
     app.addListener(ClajVars.relay = new ClajRelay(ClajVars.networkSpeed));
 

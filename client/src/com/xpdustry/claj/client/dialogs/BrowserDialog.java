@@ -47,6 +47,7 @@ import mindustry.gen.Icon;
 import mindustry.gen.Tex;
 import mindustry.graphics.Pal;
 import mindustry.net.Host;
+import mindustry.net.Packets.KickReason;
 import mindustry.ui.MobileButton;
 import mindustry.ui.Styles;
 import mindustry.ui.dialogs.BaseDialog;
@@ -138,6 +139,12 @@ public class BrowserDialog extends BaseDialog {
     */
   }
 
+  Table locateMenu(String name) {
+    Table menu = Vars.ui.menuGroup.find(name);
+    if (menu == null) Log.err("Unable to place claj buttons, main container not found!");
+    return menu;
+  }
+  
   public void rebuild() {
     setup();
     if (refreshingList) return;
@@ -208,7 +215,7 @@ public class BrowserDialog extends BaseDialog {
     if (refreshingList || !refreshing.add(server)) return;
     servers.put(server, table);
     //TODO: do not refresh when hidden
-    pingAndListServer(server, table, () -> refreshing.remove(server), e -> refreshing.remove(server));
+    pingAndListServer(server, table, () -> refreshing.remove(server), _ -> refreshing.remove(server));
   }
 
   public void pingAndListServer(Server server, Table dest, Runnable done, Cons<Exception> error) {
@@ -254,6 +261,7 @@ public class BrowserDialog extends BaseDialog {
       dest.clear();
       if (r.isEmpty()) {
         dest.table(t -> t.add("@claj.browser.no-rooms")).padTop(5).padBottom(5).growX().row();
+        done.run();
         return;
       }
       r.each(room -> {
@@ -334,10 +342,37 @@ public class BrowserDialog extends BaseDialog {
           foot.add(room.link.encodedRoomId, Color.lightGray, 0.8f).padLeft(5).padBottom(-2).padRight(3).growX().right().labelAlign(Align.right);
         }).minWidth(/*w*/ MIN_CARD_SIZE / 3f).height(20f).pad(5).right();
       })).grow().row();
-    }, style, () -> ClajUi.join.joinRoom(room.link, room.isProtected)
-    ).width(w).padBottom(7f).padRight(4f).top().left().growY();
+    }, style, () -> preJoin(room)).width(w).padBottom(7f).padRight(4f).top().left().growY();
   }
-
+  
+  public void preJoin(ClajRoom<Host> room) {
+    if (room.state != null) Events.fire(new EventType.ClientPreConnectEvent(room.state));
+    if (!Core.settings.getBool("server-disclaimer", false)) {
+      Vars.ui.showCustomConfirm("@warning", "@servers.disclaimer", "@ok", "@back", () -> {
+        Core.settings.put("server-disclaimer", true);
+        safeJoin(room);
+      }, () -> Core.settings.put("server-disclaimer", false));
+    } else safeJoin(room);
+  }
+  
+  public void safeJoin(ClajRoom<Host> room) {
+    if (room.state != null) {
+      int version = room.state.version;
+      if(version != Version.build && Version.build != -1 && version != -1){
+          Vars.ui.showInfo("[scarlet]" + 
+                           (version > Version.build ? KickReason.clientOutdated : KickReason.serverOutdated) + 
+                           "\n[]" + Core.bundle.format("server.versions", Version.build, version));
+          return;
+      }      
+    }
+    //TODO: warn if no state received?
+    join(room);
+  }
+  
+  public void join(ClajRoom<Host> room) {
+    ClajUi.join.joinRoom(room.link, room.isProtected);
+  }
+  
   public void section(String name, String host, Table src, Table dest, Runnable refresh) {
     Collapser coll = new Collapser(src, Core.settings.getBool("claj-collapsed-" + name, false));
     dest.table(head -> {
@@ -466,9 +501,4 @@ public class BrowserDialog extends BaseDialog {
     return Mathf.clamp((int)(maxWidth() / MIN_CARD_SIZE), 1, MAX_COLUMNS);
   }
 
-  Table locateMenu(String name) {
-    Table menu = Vars.ui.menuGroup.find(name);
-    if (menu == null) Log.err("Unable to place claj buttons, main container not found!");
-    return menu;
-  }
 }

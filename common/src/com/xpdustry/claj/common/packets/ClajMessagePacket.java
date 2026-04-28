@@ -37,4 +37,9 @@ public class ClajMessagePacket extends DelayedPacket {
   public void write(ByteBufferOutput write) {
     write.writeByte(message.ordinal());
   }
+  
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
 }

@@ -20,4 +20,9 @@
 package com.xpdustry.claj.common.packets;
 
 
-public class ConnectionIdlingPacket extends ConnectionWrapperPacket {}
+public class ConnectionIdlingPacket extends ConnectionWrapperPacket {
+  @Override
+  public boolean allow(boolean isServer) { 
+    return !isServer; 
+  }
+}

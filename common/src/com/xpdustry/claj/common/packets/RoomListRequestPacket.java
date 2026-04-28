@@ -38,5 +38,9 @@ public class RoomListRequestPacket extends DelayedPacket {
   public void write(ByteBufferOutput write) {
     type.write(write.buffer);
   }
-
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return isServer; 
+  }
 }

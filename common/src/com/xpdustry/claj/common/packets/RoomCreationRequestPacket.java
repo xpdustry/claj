@@ -55,4 +55,9 @@ public class RoomCreationRequestPacket extends DelayedPacket {
     write.writeInt(version);
     type.write(write.buffer);
   }
+    
+  @Override
+  public boolean allow(boolean isServer) { 
+    return isServer; 
+  }
 }
