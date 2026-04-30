@@ -38,7 +38,7 @@ import com.xpdustry.claj.common.util.Strings;
 
 /** Simple re-implementation of {@link arc.Settings} adding choice to store as plain or binary json. */
 public class JsonSettings implements Autosaver.Saveable {
-  protected final ObjectMap<String, Object> decoded = new ObjectMap<>(),
+  protected final ObjectMap<String, Object> simple = new ObjectMap<>(),
                                             defaults = new ObjectMap<>();
   protected final OrderedMap<String, JsonValue> values = new OrderedMap<>();
   protected final BaseJsonReader reader;
@@ -186,8 +186,11 @@ public class JsonSettings implements Autosaver.Saveable {
   /** Saves all values. */
   @Override
   public synchronized void save() {
-    if (!loaded || !modified()) return;
-
+    if (loaded && modified()) forceSave();
+  }
+  
+  @Override
+  public void forceSave() {
     try {
       saveValues(file());
     } catch (Throwable e) {
@@ -234,7 +237,7 @@ public class JsonSettings implements Autosaver.Saveable {
 
           builder.object();
           for (OrderedMap.Entry<String, JsonValue> e : values)
-            builder.set(e.key, decoded.get(e.key, e.value));
+            builder.set(e.key, simple.get(e.key, e.value));
           builder.close();
 
           if (compressed) Strings.toJson(builder.getJson(), writer, JsonWriter.OutputType.json);
@@ -251,7 +254,7 @@ public class JsonSettings implements Autosaver.Saveable {
           writer.object();
           for (OrderedMap.Entry<String, JsonValue> e : values) {
             // This is needed because #value() with a JsonValue is another method
-            if (decoded.containsKey(e.key)) writer.set(e.key, decoded.get(e.key));
+            if (simple.containsKey(e.key)) writer.set(e.key, simple.get(e.key));
             else {
               e.value.name = null; //in case of
               writer.name(e.key).value(e.value);
@@ -353,7 +356,7 @@ public class JsonSettings implements Autosaver.Saveable {
   public synchronized <K, E> void put(String name, Class<E> elementType, Class<K> keyType, Object value) {
     // Store primitive, null and JsonValue values directly instead of converting it to JsonValue
     if (value == null || isKnownType(value.getClass())) {
-      decoded.put(name, value);
+      simple.put(name, value);
       values.put(name, null); // reserve the key
       modified = true;
       return;
@@ -370,7 +373,7 @@ public class JsonSettings implements Autosaver.Saveable {
     catch (Throwable e) { throw new RuntimeException(e); }
 
     values.put(name, builder.getJson());
-    decoded.remove(name); // in case of type change
+    simple.remove(name); // in case of type change
     builder.reset();
     modified = true;
   }
@@ -394,9 +397,9 @@ public class JsonSettings implements Autosaver.Saveable {
   @SuppressWarnings("unchecked")
   protected synchronized <T, K, E> T get(String name, Class<T> type, Class<E> elementType, Class<K> keyType) {
     // Use the already decoded value when possible
-    boolean contains = decoded.containsKey(name);
+    boolean contains = simple.containsKey(name);
     if (contains) {
-      Object o = decoded.get(name);
+      Object o = simple.get(name);
       //check for inferred types?
       if (o == null || o.getClass() == type) return (T)o;
     } else if (type == JsonValue.class)
@@ -408,7 +411,7 @@ public class JsonSettings implements Autosaver.Saveable {
 
     // Store primitive, null and JsonValue values directly when possible
     if (!contains && (result == null || isKnownType(result.getClass()) && (type == null || isKnownType(type))))
-      decoded.put(name, result);
+      simple.put(name, result);
 
     return result;
   }

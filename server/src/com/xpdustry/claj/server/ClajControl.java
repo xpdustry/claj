@@ -136,7 +136,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       long pre = Core.app.getJavaHeap();
       System.gc();
       long post = Core.app.getJavaHeap();
-      Log.info("@ collected. Memory usage now at @.", Strings.formatBytes(pre - post), Strings.formatBytes(post));
+      Log.info("@ collected. Heap usage now at @.", Strings.formatBytes(pre - post), Strings.formatBytes(post));
     });
 
     register("yes", "Run the last suggested incorrect command.", args -> {

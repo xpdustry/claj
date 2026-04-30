@@ -26,9 +26,7 @@ import arc.struct.ObjectSet;
 import arc.struct.Seq;
 import arc.util.Log;
 import arc.util.Structs;
-import arc.util.serialization.Json;
-import arc.util.serialization.JsonValue;
-import arc.util.serialization.SerializationException;
+import arc.util.serialization.*;
 
 import com.xpdustry.claj.common.status.ClajType;
 import com.xpdustry.claj.common.util.Strings;
@@ -44,7 +42,7 @@ public class ClajConfig {
   @SuppressWarnings("rawtypes")
   public static void init() {
     settings = new JsonSettings(new Fi(fileName, Files.FileType.local), true, true, true, false);
-    
+
     settings.addSerializer(ClajType.class, new Json.Serializer<ClajType>() {
       public void write(Json json, ClajType object, Class knownType) { json.writeValue(object.type());}
       public ClajType read(Json json, JsonValue jsonData, Class type) { return ClajType.of(jsonData.asString()); }
@@ -117,7 +115,8 @@ public class ClajConfig {
     public void save() {
       if (settings == null || !settings.loaded())
         throw new IllegalStateException("settings not initialized");
-      settings.put(key, value);
+      //Because ObjectSet is not saved as a normal list, and it's annoying
+      settings.put(key, value instanceof ObjectSet<?> v ? v.toSeq() : value);
       modified = false;
     }
 
@@ -193,14 +192,17 @@ public class ClajConfig {
   }
 
 
-  private static String[] fieldDescs = {
+  private static Seq<String> fieldDescs = Seq.with(
       "Toggle debug log level",
+      "Maximum number of connections (not clients) allowed on this server. Set to &lb0&lw to disable.",
+      "Maximum number of rooms that can be created on this server. Set to &lb0&lw to disable.",
+      "Maximum number of clients allowed per room. Set to &lb0&lw to disable.",
       """
       Limit for packet count sent within 3 sec that will lead to a disconnect.
       Ignored for room hosts.
       """.trim(),
       """
-      Limit of room join requests per minute. The server will act as the room is not found.
+      Limit of room join requests per minute per ip address. The server will act as the room is not found.
       This can prevent room searching. Set to &lb0&lw to disable.
       """.trim(),
       """
@@ -210,6 +212,14 @@ public class ClajConfig {
       """
       Limit of room list requests per minute per ip address.
       The server will return an empty list. Set to &lb0&lw to disable.
+      """.trim(),
+      """
+      Limit of clients that can wait for the new state of a room.
+      A low value can limit DDoS attacks, but may annoy users. Set to &lb0&lw to disable.
+      """.trim(),
+      """
+      Limit of clients that can wait for the new room list of a type.
+      A low value can limit DDoS attacks, but may annoy users. Set to &lb0&lw to disable.
       """.trim(),
       """
       Whether to accept or not clients who attempt to join a room without specifying their CLaJ implementation.
@@ -227,25 +237,32 @@ public class ClajConfig {
       """
       Listing public rooms can be very long when requesting states,
       this defines the time before the list is send as is, even some state was not received.
-      """.trim(),
-  };
+      """.trim()
+  ).reverse();
 
-  public static Field<Boolean> debug = new Field<>("debug", fieldDescs[0], false,
-                                                   v -> Log.level = v ? Log.LogLevel.debug : Log.LogLevel.info);
-  public static Field<Integer> spamLimit = new Field<>("spam-limit", fieldDescs[1], 300);
-  public static Field<Integer> joinLimit = new Field<>("join-limit", fieldDescs[2], 30);
-  public static Field<Integer> infoLimit = new Field<>("info-limit", fieldDescs[3], 30);
-  public static Field<Integer> listLimit = new Field<>("list-limit", fieldDescs[4], 30);
-  public static Field<Boolean> acceptNoType = new Field<>("accept-no-type", fieldDescs[5], true);
-  public static Field<Boolean> warnDeprecated = new Field<>("warn-deprecated", fieldDescs[6], true);
-  public static Field<Boolean> warnClosing = new Field<>("warn-closing", fieldDescs[7], true);
-  public static Field<Float> closeWait = new Field<>("close-wait", fieldDescs[8], 10f);
-  public static Field<Integer> stateLifetime = new Field<>("state-lifetime", fieldDescs[9], 60 * 1000);
-  public static Field<Integer> stateTimeout = new Field<>("state-timeout", fieldDescs[10], 20 * 1000);
-  public static Field<Integer> listLifetime = new Field<>("list-lifetime", fieldDescs[11], 60 * 1000);
-  public static Field<Integer> listTimeout = new Field<>("list-timeout", fieldDescs[12], 30 * 1000);
+  public static Field<Boolean> debug = new Field<>("debug", fieldDescs.pop(), false, v ->
+                                                   Log.level = v ? Log.LogLevel.debug : Log.LogLevel.info);
+  public static Field<Integer> maxConnections = new Field<>("max-connections", fieldDescs.pop(), 1<<23);
+  public static Field<Integer> roomLimit = new Field<>("room-limit", fieldDescs.pop(), 1<<16);
+  public static Field<Short> clientLimit = new Field<>("client-limit", fieldDescs.pop(), (short)(1<<8));
+  public static Field<Integer> spamLimit = new Field<>("spam-limit", fieldDescs.pop(), 300);
+  public static Field<Integer> joinLimit = new Field<>("join-limit", fieldDescs.pop(), 32);
+  public static Field<Integer> infoLimit = new Field<>("info-limit", fieldDescs.pop(), 32);
+  public static Field<Integer> listLimit = new Field<>("list-limit", fieldDescs.pop(), 32);
+  public static Field<Integer> infoRequestLimit = new Field<>("info-request-limit", fieldDescs.pop(), 1<<7);
+  public static Field<Integer> listRequestLimit = new Field<>("list-request-limit", fieldDescs.pop(), 1<<10);
+  public static Field<Boolean> acceptNoType = new Field<>("accept-no-type", fieldDescs.pop(), true);
+  public static Field<Boolean> warnDeprecated = new Field<>("warn-deprecated", fieldDescs.pop(), true);
+  public static Field<Boolean> warnClosing = new Field<>("warn-closing", fieldDescs.pop(), true);
+  public static Field<Float> closeWait = new Field<>("close-wait", fieldDescs.pop(), 10f);
+  public static Field<Integer> stateLifetime = new Field<>("state-lifetime", fieldDescs.pop(), 60 * 1000);
+  public static Field<Integer> stateTimeout = new Field<>("state-timeout", fieldDescs.pop(), 20 * 1000);
+  public static Field<Integer> listLifetime = new Field<>("list-lifetime", fieldDescs.pop(), 60 * 1000);
+  public static Field<Integer> listTimeout = new Field<>("list-timeout", fieldDescs.pop(), 30 * 1000);
 
   // Other fields having their own command
-  public static Field<ObjectSet<String>> blacklist = new Field<>("blacklist", "", new ObjectSet<>(32), false);
-  public static Field<ObjectSet<ClajType>> typeBlacklist = new Field<>("type-blacklist", "", new ObjectSet<>(16), false);
+  public static Field<ObjectSet<String>> blacklist = new Field<>("blacklist", "", new ObjectSet<>(8), false);
+  public static Field<ObjectSet<ClajType>> typeBlacklist = new Field<>("type-blacklist", "", new ObjectSet<>(8), false);
+  
+  static { fieldDescs.shrink(); } // remove cached fields desc
 }

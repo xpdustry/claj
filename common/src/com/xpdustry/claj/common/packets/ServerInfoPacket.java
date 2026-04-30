@@ -25,6 +25,8 @@ import arc.util.io.ByteBufferOutput;
 
 public class ServerInfoPacket extends DelayedPacket {
   public int version = -1;
+  //TODO: add current server load: number of rooms, max rooms (if any), 
+  //      number of clients, max allowed clients per room, maybe an health status?
 
   @Override
   protected void readImpl(ByteBufferInput read) {

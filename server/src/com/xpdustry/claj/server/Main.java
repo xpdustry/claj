@@ -48,8 +48,9 @@ public class Main implements ApplicationListener {
       // Try to dispose properly
       try { app.dispose(); }
       catch (Exception e) { disposeError = e; }
-      try { ClajConfig.save(); }
+      try { ClajConfig.save(); } 
       catch (Exception e) { saveError = e; }
+      Autosaver.forceSave();
       if (isLoading) Log.err("Failed to load server", t);
       else {
         Log.err(t);

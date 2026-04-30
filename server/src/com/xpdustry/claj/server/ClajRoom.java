@@ -22,6 +22,7 @@ package com.xpdustry.claj.server;
 import java.nio.ByteBuffer;
 
 import arc.Events;
+import arc.math.Mathf;
 import arc.net.*;
 import arc.struct.IntMap;
 import arc.util.Threads;
@@ -83,6 +84,11 @@ public class ClajRoom implements NetListener {
   public boolean requestingState;
   /** Room implementation type. Can be {@code null}. */
   public final ClajType type;
+  /** 
+   * Maximum number of CLaJ client allowed in this room. <br>
+   * {@code 0} means no limit and the value must not be higher that the server limit.
+   */
+  public int maxClients;
 
   public ClajRoom(long id, ClajConnection host, ClajType type) {
     if (id == 0) throw new IllegalArgumentException("invalid room id");
@@ -150,8 +156,8 @@ public class ClajRoom implements NetListener {
       host.send(p);
     }
 
-    clients.remove(connection.id);
     removeRoom(connection);
+    clients.remove(connection.id);
     Events.fire(new ConnectionLeftEvent(connection, this));
   }
 
@@ -169,8 +175,8 @@ public class ClajRoom implements NetListener {
       Events.fire(new ConnectionLeftEvent(connection, this));
       close();
     } else {
-      clients.remove(connection.id);
       removeRoom(connection);
+      clients.remove(connection.id);
       Events.fire(new ConnectionLeftEvent(connection, this));
     }
   }
@@ -310,12 +316,12 @@ public class ClajRoom implements NetListener {
     p.reason = reason;
     host.send(p);
 
+    removeRoom(host);
     host.close();
     for (ClajConnection c : clients.values()) {
-      c.close();
       removeRoom(c);
+      c.close();
     }
-    removeRoom(host);
     clients.clear();
 
     Events.fire(new RoomClosedEvent(this));
@@ -351,13 +357,16 @@ public class ClajRoom implements NetListener {
     host.send(p);
   }
 
-  public void setConfiguration(boolean isPublic, boolean isProtected, short password, boolean requestState) {
+  public void setConfiguration(boolean isPublic, boolean isProtected, short password, boolean requestState, 
+                               int maxClients) {
     if (closed) return;
 
     this.isPublic = isPublic;
     this.isProtected = isProtected;
     this.password = password;
     this.canRequestState = requestState;
+    int limit = ClajConfig.clientLimit.get();
+    this.maxClients = limit > 0 ? Mathf.clamp(maxClients, 0, limit) : maxClients;
     Events.fire(new ConfigurationChangedEvent(this));
   }
 
@@ -384,7 +393,7 @@ public class ClajRoom implements NetListener {
 
   public void setState(ByteBuffer rawState) {
     if (closed) return;
-    if (rawState != null && rawState.remaining() > RoomInfoPacket.MAX_BUFF_SIZE)
+    if (rawState != null && rawState.remaining() >= RoomInfoPacket.MAX_BUFF_SIZE)
       throw new IllegalArgumentException("Buffer size must be less than " + RoomInfoPacket.MAX_BUFF_SIZE);
     lastReceivedState = Time.millis();
     this.rawState = rawState;
@@ -425,11 +434,11 @@ public class ClajRoom implements NetListener {
     p.roomId = id;
     p.isProtected = isProtected;
     p.type = type;
+    p.clients = clients.size;
+    p.maxClients = maxClients;
     p.state = isPublic ? rawState : null;
     // Do not throw an error if buffer is above limit
-    if (rawState != null && rawState.remaining() > RoomInfoPacket.SPLIT_BUFF_SIZE)
-         connection.sendStream(p);
-    else connection.send(p);
+    connection.send(p);
   }
 
   /** @return whether specified connection is the room host or not. */

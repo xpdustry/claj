@@ -32,6 +32,8 @@ public class RoomConfigPacket extends DelayedPacket {
   public short password;
   /** Whether the host allows or not the server to request his state. */
   public boolean requestState;
+  /** Maximum number of client allowed in the room. Cannot be higher that the server limit. {@code 0 if disabled}. */
+  public int maxClients;
 
   @Override
   protected void readImpl(ByteBufferInput read) {
@@ -40,6 +42,7 @@ public class RoomConfigPacket extends DelayedPacket {
     isProtected =  (data & 0b0010) == 0b0010;
     requestState = (data & 0b0001) == 0b0001;
     password = read.readShort();
+    maxClients = read.readChar();
   }
 
   @Override
@@ -49,6 +52,7 @@ public class RoomConfigPacket extends DelayedPacket {
              | ((requestState ? 1 : 0) << 0);
     write.writeByte(data);
     write.writeShort(password);
+    write.writeChar(maxClients);
   }
     
   @Override

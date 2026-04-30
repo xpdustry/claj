@@ -29,12 +29,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Artifacts
-        run: gradle release
+        run: gradle build
  
-      - name: Upload Artifacts to Actions
+      - name: Upload Client Artifact to Actions
         uses: actions/upload-artifact@v7
         with:
-          path: build/release/*.jar
+          path: client/build/libs/${{ github.event.repository.name }}-client.jar
+          if-no-files-found: error
+          archive: false
+
+      - name: Upload Server Artifact to Actions
+        uses: actions/upload-artifact@v7
+        with:
+          path: server/build/libs/${{ github.event.repository.name }}-server.jar
           if-no-files-found: error
           archive: false
 

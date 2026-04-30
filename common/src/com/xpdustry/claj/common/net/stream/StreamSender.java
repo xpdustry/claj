@@ -95,6 +95,8 @@ public class StreamSender extends InputStreamSender {
     ByteArrayBufferOutput buff = new ByteArrayBufferOutput(chunkSize, compress);
     packet.write(buff);
     buff.close();
+    if (buff.back.size() > StreamHead.MAX_STREAM_SIZE)
+      throw new RuntimeException("Stream is too big");
     InputStream in = new ByteArrayInputStream(buff.back.getBytes(), 0, buff.back.size());
     return new StreamSender(connection, in, id, buff.back.size(), chunkSize, buff.compressed);
   }
@@ -112,6 +114,8 @@ public class StreamSender extends InputStreamSender {
     ByteArrayBufferOutput buff = new ByteArrayBufferOutput(chunkSize,  compress);
     packet.write(buff);
     buff.close();
+    if (buff.back.size() > StreamHead.MAX_STREAM_SIZE)
+      throw new RuntimeException("Stream is too big");
     return new PreparedStream(buff.back, id, chunkSize, buff.compressed);
   }
 }

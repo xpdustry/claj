@@ -26,9 +26,7 @@ import arc.util.io.ByteBufferOutput;
 
 
 public class RoomStatePacket extends DelayedPacket {
-  public static final int MAX_BUFF_SIZE = Character.MAX_VALUE;
-  /** Packet should be sent by stream if {@link #state} size is above this limit. */
-  public static final int SPLIT_BUFF_SIZE = 8128;
+  public static final int MAX_BUFF_SIZE = 8128;
 
   public ByteBuffer state;
 

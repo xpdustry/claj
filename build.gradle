@@ -81,6 +81,14 @@ project(":client") {
       include "mod.hjson"
       include "icon.png"
     }
+    
+    // Copy the builded jar to the working directory
+    doLast {
+      copy {
+        from mergeJar
+        into rootDir
+      }
+    }
   }
 	
   // Includes android dex
@@ -116,6 +124,14 @@ project(":server") {
 
     //TODO: use arc-lite
     //exclude "arc/assets/**", "arc/audio/**", "arc/input/**", "arc/scene/**", "arc/util/noise/**", "arc/util/viewport/**"
+    
+    // Copy the builded jar to the working directory
+    doLast {
+      copy {
+        from jar
+        into rootDir
+      }
+    }
   }
   
   task run(dependsOn: classes, type: JavaExec) {
@@ -126,15 +142,6 @@ project(":server") {
     args 7000 // default port
     jvmArgs "-DClaj-Version=${metadata.version}" // claj version
   }
-}
-
-task release(dependsOn: subprojects.build, type: Copy) {
-  subprojects.each {
-    from it.layout.buildDirectory.dir("libs") 
-    include "${metadata.name}-*.jar"
-  }
-  into layout.buildDirectory.dir("release")
-  //into rootDir
 }
 
 // To shut up Javadoc

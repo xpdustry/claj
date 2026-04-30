@@ -81,6 +81,7 @@ public class StreamBuilder {
       stream.write(bytes);
       stream.flush();
       reads += bytes.length;
+      //TODO: check for uncompressed data?
     } catch (IOException e) { throw new RuntimeException(e); }
   }
 

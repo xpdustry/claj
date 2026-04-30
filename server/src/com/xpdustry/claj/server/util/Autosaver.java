@@ -36,7 +36,7 @@ public class Autosaver {
     app.addListener(new ApplicationListener() {
       final Timekeeper rate = Timekeeper.ofSeconds(1);
       public void update() { if (rate.poll()) save(); }
-      public void dispose() { save(); }
+      public void dispose() { forceSave(); }
     });
   }
 
@@ -102,14 +102,29 @@ public class Autosaver {
     }
     return true;
   }
+  
+  /** Save all registered things now, even not modified. */
+  public static boolean forceSave() {
+    for (SavePriority p : SavePriority.all) {
+      p.saves.each(s -> {
+        try { s.forceSave(); }
+        catch (Throwable t) {
+          Log.err("Failed to save " + s.name(), t);
+          if (errorHandler != null) errorHandler.get(s, t);
+        }
+      });
+    }
+    return true;
+  }
 
-
+  
   /** Defines a things that can be saved by the {@link Autosaver}. */
   public interface Saveable {
     /** Used for logging. */
     String name();
     boolean modified();
     void save();
+    default void forceSave() { save(); }
   }
 
 

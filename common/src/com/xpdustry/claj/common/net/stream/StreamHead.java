@@ -25,6 +25,7 @@ import arc.util.io.ByteBufferOutput;
 
 /** {@link mindustry.net.Packets.StreamBegin}. */
 public class StreamHead implements StreamPacket {
+  public static final int MAX_STREAM_SIZE = 1<<20;
   private static int lastid;
 
   public int id = lastid++;

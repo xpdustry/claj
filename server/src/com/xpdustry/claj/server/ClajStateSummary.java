@@ -56,7 +56,7 @@ public class ClajStateSummary {
     javaCpuLoad = CpuUsageGetter.processCpuLoad();
     systemCpuLoad = CpuUsageGetter.cpuLoad();
     rooms = ClajVars.relay.rooms.size;
-    clients = ClajVars.relay.connections.size;
+    clients = ClajVars.relay.clientsInRooms();
     connections = ClajVars.relay.getConnections().length;
     NetworkSpeed net = ClajVars.relay.networkSpeed;
     if (net != null) {

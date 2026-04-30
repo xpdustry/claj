@@ -32,6 +32,7 @@ import arc.net.FrameworkMessage;
 import arc.struct.LongMap;
 import arc.struct.ObjectSet;
 import arc.struct.Seq;
+import arc.util.Log;
 import arc.util.Reflect;
 import arc.util.io.ByteBufferInput;
 
@@ -101,7 +102,8 @@ public class ClajPinger extends Client {
 
     receiver.handle(RoomListPacket.class, p -> runListInfo(p.states, p.protectedRooms));
     receiver.handle(RoomInfoPacket.class, p -> {
-      if (p.roomId == requestedRoom) runInfoSuccess(p.roomId, p.isProtected, p.type, p.state);
+      if (p.roomId != requestedRoom) return;
+      runInfoSuccess(p.roomId, p.isProtected, p.type, p.clients, p.maxClients, p.state);
     });
     receiver.handle(RoomInfoDeniedPacket.class, this::runInfoNotFound);
 
@@ -213,6 +215,17 @@ public class ClajPinger extends Client {
     timeout = time + out;
     setTimeout(out);
   }
+  
+  protected <T> ClajRoom<T> makeRoom(long roomId, boolean isProtected, ClajType type, int clients, int maxClients,
+                                     ByteBuffer state) {
+    T decodedState = null;
+    ClajLink link = new ClajLink(connectHost, connectPort, roomId);
+    if (state != null && state.hasRemaining()) {
+      try { decodedState = provider.readRoomState(roomId, type, state); }
+      catch (Exception e) { Log.err("Failed to decode state of room " + link.encodedRoomId, e); }
+    }
+    return new ClajRoom<>(roomId, true, isProtected, decodedState, link, type, clients, maxClients);
+  }
 
   protected synchronized void resetPingState(Cons<ServerState> success, Cons<Exception> failed) {
     pingSuccess = success;
@@ -251,12 +264,7 @@ public class ClajPinger extends Client {
       ClajType type = provider.getType();
       for (LongMap.Entry<ByteBuffer> e : states) {
         if (e.key == ClajProxy.UNCREATED_ROOM) continue; // ignore invalid rooms
-        roomList.add(new ClajRoom<>(
-          e.key, true, protectedRooms.contains(e.key),
-          e.value == null ? null : provider.readRoomState(e.key, type, e.value),
-          new ClajLink(connectHost, connectPort, e.key),
-          type
-        ));
+        roomList.add(makeRoom(e.key, protectedRooms.contains(e.key), type, 0, 0, e.value));
       }
       postTask(listInfo, roomList);
     }
@@ -309,16 +317,10 @@ public class ClajPinger extends Client {
     infoing = false;
   }
 
-  protected void runInfoSuccess(long roomId, boolean isProtected, ClajType type, ByteBuffer state) {
-    if (infoSuccess != null) {
-      ClajRoom<?> room = new ClajRoom<>(
-        roomId, true, isProtected,
-        state == null ? null : provider.readRoomState(roomId, type, state),
-        new ClajLink(connectHost, connectPort, roomId),
-        type
-      );
-      postTask(infoSuccess, room);
-    }
+  protected void runInfoSuccess(long roomId, boolean isProtected, ClajType type, int clients, int maxClients, 
+                                ByteBuffer state) {
+    if (infoSuccess != null) 
+      postTask(infoSuccess, makeRoom(roomId, isProtected, type, clients, maxClients, state));
     resetInfoState(null, null, null);
     close();
   }

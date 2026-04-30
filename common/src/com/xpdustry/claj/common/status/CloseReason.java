@@ -33,8 +33,16 @@ public enum CloseReason {
   outdatedServer,
   /** Server is shutting down. */
   serverClosed,
+  /** The server is notifying as full. */
+  serverFull,
   /** The CLaJ server doesn't allows the provided implementation. */
-  blacklisted;
+  blacklisted,
+  /** 
+   * The room as been closed by the server because it considered the room as AFK. <br>
+   * Here, AFK means that no CLaJ clients has connected for a long time.
+   * Even if in reality, there are client connected but with another way than CLaJ.
+   */
+  afk;
 
   public static final CloseReason[] all = values();
 }

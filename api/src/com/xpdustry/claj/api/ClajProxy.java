@@ -28,7 +28,6 @@ import com.xpdustry.claj.api.net.ProxyClient;
 import com.xpdustry.claj.api.net.VirtualConnection;
 import com.xpdustry.claj.common.ClajPackets.Connect;
 import com.xpdustry.claj.common.ClajPackets.Disconnect;
-import com.xpdustry.claj.common.net.stream.StreamSender;
 import com.xpdustry.claj.common.packets.*;
 import com.xpdustry.claj.common.status.ClajType;
 import com.xpdustry.claj.common.status.CloseReason;
@@ -63,7 +62,7 @@ public class ClajProxy extends ProxyClient {
 
     receiver.handle(RoomClosedPacket.class, p -> runRoomClose(p.reason));
     receiver.handle(RoomLinkPacket.class, p -> runRoomCreated(p.roomId));
-    receiver.handle(RoomStateRequestPacket.class, this::notifyGameState);
+    receiver.handle(RoomStateRequestPacket.class, this::notifyRoomState);
 
     receiver.handle(ClajTextMessagePacket.class, p -> provider.showTextMessage(this, p.message));
     receiver.handle(ClajMessagePacket.class, p -> provider.showMessage(this, p.message));
@@ -96,7 +95,7 @@ public class ClajProxy extends ProxyClient {
     if (roomId == UNCREATED_ROOM) return;
     if (roomCreated != null) postTask(roomCreated, link);
     notifyConfiguration();
-    //TODO: also notify initial state?
+    if (isPublic) notifyRoomState();
   }
 
   /** This also resets room id and removes callbacks. */
@@ -130,9 +129,14 @@ public class ClajProxy extends ProxyClient {
   }
 
   public void closeRoom() {
+    closeRoom(null);
+  }
+  
+  /** {@code null} reason means closed by user. */
+  public void closeRoom(CloseReason reason) {
     if (!roomCreated()) return;
     sendTCP(makeRoomClosePacket());
-    runRoomClose(null);
+    runRoomClose(reason);
   }
 
   public void requestRoomId() {
@@ -142,6 +146,7 @@ public class ClajProxy extends ProxyClient {
 
   public void setDefaultConfiguration(boolean isPublic, boolean isProtected, short roomPassword,
                                       boolean allowStateRequests) {
+    boolean wasPrivate = !this.isPublic;
     boolean notify = this.isPublic != isPublic
                   || this.isProtected != isProtected
                   || this.roomPassword != roomPassword
@@ -151,6 +156,7 @@ public class ClajProxy extends ProxyClient {
     this.roomPassword = roomPassword;
     this.allowStateRequests = allowStateRequests;
     if (notify) notifyConfiguration();
+    if (wasPrivate && this.isPublic) notifyRoomState();
   }
 
   public void notifyConfiguration() {
@@ -158,7 +164,7 @@ public class ClajProxy extends ProxyClient {
     sendTCP(makeRoomConfigPacket(isPublic, isProtected, roomPassword, allowStateRequests));
   }
 
-  public void notifyGameState() {
+  public void notifyRoomState() {
     if (!roomCreated()) return;
     ByteBuffer state = allowStateRequests ? provider.writeRoomState(this) : null;
     Packet p = makeRoomStatePacket(roomId, state);
@@ -167,11 +173,9 @@ public class ClajProxy extends ProxyClient {
       return;
     }
     state.flip();
-    // In case of a big state, chunk it
-    if (state.remaining() < RoomStatePacket.SPLIT_BUFF_SIZE) sendTCP(p);
-    else if (state.remaining() > RoomStatePacket.MAX_BUFF_SIZE)
+    if (state.remaining() >= RoomStatePacket.MAX_BUFF_SIZE)
       throw new IllegalArgumentException("Buffer size must be less than " + RoomStatePacket.MAX_BUFF_SIZE);
-    else StreamSender.send(this, p);
+    sendTCP(p);
   }
 
   protected Packet makeRoomStatePacket(long roomId, ByteBuffer state) {

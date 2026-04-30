@@ -22,7 +22,6 @@ package com.xpdustry.claj.client;
 import arc.ApplicationListener;
 import arc.Core;
 import arc.Events;
-import arc.util.Timer;
 
 import mindustry.Vars;
 import mindustry.game.EventType;
@@ -51,9 +50,8 @@ public class Main extends Mod {
     // Pretty difficult to know when the player quits the game,
     // there is no event and StateChangeEvent is not reliable for that...
     Vars.ui.paused.hidden(() -> {
-      Timer.schedule(() -> {
-        if (!Vars.net.active() || Vars.state.isMenu()) Claj.get().closeRooms();
-      }, 1f);
+        if (Vars.net.active() && !Vars.state.isMenu()) return;
+        Claj.get().closeRooms();
     });
     Events.run(EventType.HostEvent.class, this::stopClaj);
     Events.run(EventType.ClientPreConnectEvent.class, this::stopClaj);
@@ -61,8 +59,8 @@ public class Main extends Mod {
     // Hooks NetClient#kick() packet to reconnect to the room
     Vars.net.handleClient(KickCallPacket2.class, p -> {
       p.handleClient();
-      if (p.reason == KickReason.serverRestarting)
-        ClajUi.join.rejoinRoom();
+      if (p.reason != KickReason.serverRestarting) return;
+      ClajUi.join.rejoinRoom();
     });
 
     // Need to revert player limit in case of the mod is removed

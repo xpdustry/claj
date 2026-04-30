@@ -25,7 +25,10 @@ import arc.struct.IntMap;
 import com.xpdustry.claj.common.packets.Packet;
 
 
+//TODO: clear unfinished streams after one minute.
 public class StreamReceiver {
+  public static final int MAX_SIMULTANEOUS_STREAMS = 8;
+  
   protected static IntMap<IntMap<StreamBuilder>> sbuilders;
   protected static IntMap<StreamBuilder> cbuilders;
 
@@ -35,12 +38,16 @@ public class StreamReceiver {
    * @throws RuntimeException if a chunk was received before his head.
    */
   public static Packet received(StreamPacket packet) {
-    if (cbuilders == null) cbuilders = new IntMap<>(8);
+    if (cbuilders == null) cbuilders = new IntMap<>(MAX_SIMULTANEOUS_STREAMS);
 
-    if (packet instanceof StreamHead begin)
+    if (packet instanceof StreamHead begin) {
+      if (begin.total >= StreamHead.MAX_STREAM_SIZE)
+        throw new RuntimeException("Stream is too big; " + begin.total + ">=" + StreamHead.MAX_STREAM_SIZE);
+      if (cbuilders.size >= MAX_SIMULTANEOUS_STREAMS)
+        throw new RuntimeException("Too many simultaneous streams; " + cbuilders.size + ">=" + MAX_SIMULTANEOUS_STREAMS);
       cbuilders.put(begin.id, new StreamBuilder(begin));
-
-    else if (packet instanceof StreamChunk chunk) {
+       
+    } else if (packet instanceof StreamChunk chunk) {
       StreamBuilder builder = cbuilders.get(chunk.id);
       if (builder == null)
         throw new RuntimeException("Received a StreamChunk without a StreamHead beforehand!");
@@ -62,11 +69,17 @@ public class StreamReceiver {
   public static Packet received(Connection connection, StreamPacket packet) {
     if (sbuilders == null) sbuilders = new IntMap<>(16);
 
-    if (packet instanceof StreamHead begin)
-      sbuilders.get(connection.getID(), () -> new IntMap<>(8))
-               .put(begin.id, new StreamBuilder(begin));
+    if (packet instanceof StreamHead begin) {
+      if (begin.total >= StreamHead.MAX_STREAM_SIZE)
+        throw new RuntimeException("Stream is too big for " + connection + "; " + 
+                                   begin.total + ">=" + StreamHead.MAX_STREAM_SIZE);
+      IntMap<StreamBuilder> builders = sbuilders.get(connection.getID(), () -> new IntMap<>(MAX_SIMULTANEOUS_STREAMS));
+      if (builders.size >= MAX_SIMULTANEOUS_STREAMS)
+        throw new RuntimeException("Too many simultaneous streams for " + connection + "; " + 
+                                   builders.size + ">=" + MAX_SIMULTANEOUS_STREAMS);
+      builders.put(begin.id, new StreamBuilder(begin));
 
-    else if (packet instanceof StreamChunk chunk) {
+    } else if (packet instanceof StreamChunk chunk) {
       IntMap<StreamBuilder> builds = sbuilders.get(connection.getID());
       StreamBuilder builder = builds != null ? builds.get(chunk.id) : null;
       if (builder == null)

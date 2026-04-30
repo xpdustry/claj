@@ -21,7 +21,6 @@ package com.xpdustry.claj.server;
 
 import java.util.Objects;
 
-import arc.Core;
 import arc.net.Connection;
 import arc.net.DcReason;
 import arc.util.Log;
@@ -91,14 +90,7 @@ public class ClajConnection {
   }
 
   public void close() { close(DcReason.closed); }
-  //TODO: ???
-  /** Delay closing to let remaining packets to be sent. */
   public void close(DcReason reason) {
-    Core.app.post(() -> closeNow(reason));
-  }
-
-  public void closeNow() { closeNow(DcReason.closed); }
-  public void closeNow(DcReason reason) {
-    if (isConnected()) connection.close(reason);
+    connection.close(reason);
   }
 }

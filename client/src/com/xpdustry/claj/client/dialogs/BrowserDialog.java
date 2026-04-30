@@ -212,9 +212,10 @@ public class BrowserDialog extends BaseDialog {
   }
 
   public void refreshServer(Server server, Table table) {
+    // Don't refresh if hidden
+    if (Core.settings.getBool("claj-collapsed-" + server.name, false)) return;
     if (refreshingList || !refreshing.add(server)) return;
     servers.put(server, table);
-    //TODO: do not refresh when hidden
     pingAndListServer(server, table, () -> refreshing.remove(server), _ -> refreshing.remove(server));
   }
 
@@ -386,12 +387,22 @@ public class BrowserDialog extends BaseDialog {
         head.add(name, Pal.accent).pad(5).padLeft(10).left().bottom();
         head.add('(' + host + ')', Pal.lightishGray).pad(5).growX().left().bottom();
       }
-      if (refresh != null)
-        Vars.ui.addDescTooltip(head.button(Icon.refresh, Styles.emptyi, refresh).size(40f).padRight(3).right()
-                                   .get(), "@claj.browser.refresh-rooms");
+      
+      boolean[] firstRefresh = {true};
+      if (refresh != null){
+        Vars.ui.addDescTooltip(head.button(Icon.refresh, Styles.emptyi, () -> {
+          if (!coll.isCollapsed()) firstRefresh[0] = false;
+          refresh.run();
+        }).size(40f).padRight(3).right().get(), "@claj.browser.refresh-rooms");
+      }
       Button button = head.button(Icon.downOpen, Styles.emptyi, () -> {
         coll.toggle(false);
         Core.settings.put("claj-collapsed-" + name, coll.isCollapsed());
+        // If it was hidden, refresh at first shown.
+        if (!coll.isCollapsed() && firstRefresh[0]) {
+          if (refresh != null) refresh.run();
+          firstRefresh[0] = false;
+        }
       }).size(40f).padRight(11).right()
         .update(i -> i.getStyle().imageUp = coll.isCollapsed() ? Icon.downOpen : Icon.upOpen).get();
       Tooltip tip = new Tooltip(t ->
@@ -401,7 +412,7 @@ public class BrowserDialog extends BaseDialog {
       button.addListener(tip);
     }).padTop(10).growX().row();
     dest.image().pad(5, 10, 5, 16).height(3).color(Pal.accent).growX().row();
-    dest.add(coll).pad(5).padRight(0).padBottom(10).growX().row();
+    dest.add(coll).pad(5).padRight(0).padBottom(0).growX().row();
   }
 
   public void checkPlay(Runnable run) {

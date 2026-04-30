@@ -145,7 +145,7 @@ public class MindustryClajProvider implements ClajProvider {
 
     Timer.schedule(() -> {
       if (!proxy.roomCreated()) return;
-      proxy.closeRoom();
+      proxy.clearRoomCache(CloseReason.serverClosed);
     }, 5);
   }
 

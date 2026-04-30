@@ -31,7 +31,18 @@ import arc.util.io.ByteBufferOutput;
 public class RoomListPacket extends DelayedPacket {
   public final LongMap<ByteBuffer> states = new LongMap<>();
   public final ObjectSet<Long> protectedRooms = new ObjectSet<>(32);
+  //TODO: add clients and maxClients info
 
+  public RoomListPacket clear(boolean alsoShrink) {
+    states.clear();
+    protectedRooms.clear();
+    if (alsoShrink) {
+      states.shrink(0);
+      protectedRooms.shrink(0);
+    }
+    return this;
+  }
+  
   @Override
   protected void readImpl(ByteBufferInput read) {
     for (int i=0, n=read.readInt(); i<n; i++) {

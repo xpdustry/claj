@@ -34,17 +34,24 @@ public class ClajRoom<T> {
   public ClajLink link;
   /** Room implementation type. */
   public ClajType type;
+  /** Current number of client in the room. */
+  public int clients;
+  /** Maximum number of CLaJ client allowed in this room. {@code 0} means no limit. */
+  public int maxClients;
 
   public ClajRoom(long roomId) {
     this.roomId = roomId;
   }
 
-  public ClajRoom(long roomId, boolean isPublic, boolean isProtected, T state, ClajLink link, ClajType type) {
+  public ClajRoom(long roomId, boolean isPublic, boolean isProtected, T state, ClajLink link, ClajType type, 
+                  int clients, int maxClients) {
     this.roomId = roomId;
     this.isPublic = isPublic;
     this.isProtected = isProtected;
     this.state = state;
     this.link = link;
     this.type = type;
+    this.clients = clients;
+    this.maxClients = maxClients;
   }
 }

@@ -29,12 +29,16 @@ public class RoomInfoPacket extends RoomStatePacket {
   public long roomId;
   public boolean isProtected;
   public ClajType type;
+  public int clients;
+  public int maxClients;
 
   @Override
   protected void readImpl(ByteBufferInput read) {
     roomId = read.readLong();
     isProtected = read.readBoolean();
     type = ClajType.read(read.buffer);
+    clients = read.readChar();
+    maxClients = read.readChar();
     super.readImpl(read);
   }
 
@@ -43,6 +47,8 @@ public class RoomInfoPacket extends RoomStatePacket {
     write.writeLong(roomId);
     write.writeBoolean(isProtected);
     type.write(write.buffer);
+    write.writeChar(clients);
+    write.writeChar(maxClients);
     super.write(write);
   }
     
