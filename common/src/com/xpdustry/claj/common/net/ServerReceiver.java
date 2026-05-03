@@ -36,16 +36,15 @@ import com.xpdustry.claj.common.util.AddressUtil;
 public class ServerReceiver implements NetListener {
   protected final ObjectMap<Class<?>, Cons2<Connection, ?>> listeners = new ObjectMap<>(32);
   protected Cons<Runnable> delegator;
+  protected Cons<Throwable> errorHandler;
   protected NetListenerFilter filter;
 
   /** Receive will not be delegated. */
   public ServerReceiver(EndPoint server) { this(server, null); }
   public ServerReceiver(EndPoint server, Cons<Runnable> delegator) {
-    this(server, null, NetListenerFilter.defaultFilter);
-  }
-  public ServerReceiver(EndPoint server, Cons<Runnable> delegator, NetListenerFilter filter) {
     this.delegator = delegator;
-    this.filter = filter;
+    this.filter = NetListenerFilter.defaultFilter;
+    this.errorHandler = Log::err;
     server.addListener(this);
   }
 
@@ -54,11 +53,16 @@ public class ServerReceiver implements NetListener {
     this.filter = filter;
   }
 
+  public void setErrorHandler(Cons<Throwable> errorHandler) {
+    if (errorHandler == null) throw new NullPointerException("errorHandler");
+    this.errorHandler = errorHandler;
+  }
+
   @Override
   public void connected(Connection connection) {
     if (!filter.connected(connection)) return;
     Connect packet = new Connect();
-    packet.address = AddressUtil.get(connection);
+    packet.address = AddressUtil.getString(connection);
     delegateReceive(connection, packet);
   }
 
@@ -135,6 +139,6 @@ public class ServerReceiver implements NetListener {
       var listener = (Cons2<Connection, Packet>)listeners.get(packet.getClass());
       if (listener != null) listener.get(connection, packet);
       else packet.handleServer(connection);
-    } catch (Throwable e) { Log.err(e); }
+    } catch (Throwable e) { errorHandler.get(e); }
   }
 }

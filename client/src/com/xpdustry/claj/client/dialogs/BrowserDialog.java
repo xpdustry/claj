@@ -259,18 +259,7 @@ public class BrowserDialog extends BaseDialog {
     int columns = columns();
     Claj.get().<Host>serverRooms/*test.mockServerRooms*/(server.address, server.port, r -> {
       serverRooms.put(server, r);
-      dest.clear();
-      if (r.isEmpty()) {
-        dest.table(t -> t.add("@claj.browser.no-rooms")).padTop(5).padBottom(5).growX().row();
-        done.run();
-        return;
-      }
-      r.each(room -> {
-        if (isHidden(room.state)) return;
-        addRoom(dest, room);
-        if (dest.getChildren().size % columns == 0)
-          dest.row();
-      });
+      setRooms(dest, r, columns);
       done.run();
     }, e -> {
       dest.clear();
@@ -284,6 +273,23 @@ public class BrowserDialog extends BaseDialog {
       }).padLeft(10).padRight(10).growX().row();
       error.get(e);
     });
+  }
+
+  protected void setRooms(Table dest, Seq<ClajRoom<Host>> rooms, int columns) {
+    dest.clear();
+    if (rooms.isEmpty()) {
+      dest.table(t -> t.add("@claj.browser.no-rooms")).padTop(5).padBottom(5).growX().row();
+      return;
+    }
+    boolean[] hasResult = {false};
+    rooms.each(room -> {
+      if (isHidden(room.state)) return;
+      hasResult[0] = true;
+      addRoom(dest, room);
+      if (dest.getChildren().size % columns == 0) dest.row();
+    });
+    if (hasResult[0]) return;
+    dest.table(t -> t.add("@claj.browser.no-result")).padTop(5).padBottom(5).growX().row();
   }
 
   public boolean isHidden(Host host) {
@@ -423,19 +429,9 @@ public class BrowserDialog extends BaseDialog {
   public void filterRooms() {
     int columns = columns();
     for(var e : servers) {
-      Server server = e.key;
-      Table table = e.value;
-
-      Seq<ClajRoom<Host>> rooms = serverRooms.get(server);
+      Seq<ClajRoom<Host>> rooms = serverRooms.get(e.key);
       if (rooms == null) continue;
-
-      table.clear();
-      rooms.each(room -> {
-        if (isHidden(room.state)) return;
-        addRoom(table, room);
-        if (table.getChildren().size % columns == 0)
-          table.row();
-      });
+      setRooms(e.value, rooms, columns);
     }
   }
 

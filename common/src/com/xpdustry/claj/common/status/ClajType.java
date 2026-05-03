@@ -20,13 +20,16 @@
 package com.xpdustry.claj.common.status;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 
-import arc.util.Strings;
 
-
-/** Should be in ASCII (to avoid encoding errors) and must be {@code 16} <u>BYTES</u> max.  */
+/**
+ * Must be in ASCII, {@code 16} <u>BYTES</u> max, and without spaces. <br>
+ * Type will be truncated if greater than {@link #SIZE}, and spaces will be replaced by {@code '_'}.
+ */
 public class ClajType {
+  public static final Charset ASCII = Charset.forName("ascii");
   /** In bytes. */
   public static final int SIZE = 16;
 
@@ -106,12 +109,12 @@ public class ClajType {
 
   /** Data will be truncated if length is greater than {@link #SIZE}. */
   public static String decode(byte[] data) {
-    return new String(data, 0, Math.min(data.length, SIZE));
+    return new String(data, 0, Math.min(data.length, SIZE), ASCII).replace(' ', '_');
   }
 
   /** {@code str} will be truncated if length is greater than {@link #SIZE}. */
   public static byte[] encode(String str) {
-    return truncate(str.getBytes(Strings.utf8), SIZE, false);
+    return truncate(str.replace(' ', '_').getBytes(ASCII), SIZE, false);
   }
 
   public static byte[] truncate(byte[] data, int max, boolean copy) {
@@ -124,7 +127,7 @@ public class ClajType {
 
   /** @return the parsed {@link ClajType}, or {@code null} if it's invalid. */
   public static ClajType of(String str) {
-    byte[] t = str.trim().getBytes(Strings.utf8);
+    byte[] t = str.replace(' ', '_').getBytes(ASCII);
     return t.length < 1 || t.length > SIZE ? null : new ClajType(t);
   }
 }

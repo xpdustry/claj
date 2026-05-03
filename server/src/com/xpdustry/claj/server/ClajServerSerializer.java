@@ -74,9 +74,9 @@ public class ClajServerSerializer implements NetSerializer, FrameworkSerializer 
   }
 
   public String readString(ByteBuffer buffer) {
-    ByteBufferInput in = read.get();
-    in.buffer = buffer;
-    return Strings.readUTF(in);
+    // We don't care of the data, it's just for compatibility reasons
+    buffer.position(buffer.limit());
+    return "";
   }
 
   public Packet readClaj(ByteBuffer buffer) {
@@ -89,6 +89,7 @@ public class ClajServerSerializer implements NetSerializer, FrameworkSerializer 
   }
 
   public RawPacket readRaw(ByteBuffer buffer) {
+    //TODO: buffer pool?
     buffer.position(buffer.position()-1);
     return new RawPacket(buffer);
   }

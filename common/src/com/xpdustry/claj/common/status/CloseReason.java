@@ -42,7 +42,9 @@ public enum CloseReason {
    * Here, AFK means that no CLaJ clients has joined the room for a long time.
    * Even if in reality, there are client connected but with another way than CLaJ.
    */
-  afk;
+  afk,
+  /** The host is sending too many packets. */
+  spam;
 
   public static final CloseReason[] all = values();
 }

@@ -19,7 +19,7 @@
 
 package com.xpdustry.claj.server;
 
-import java.util.Objects;
+import java.net.InetAddress;
 
 import arc.net.Connection;
 import arc.net.DcReason;
@@ -34,7 +34,8 @@ import com.xpdustry.claj.common.util.AddressUtil;
 
 public class ClajConnection {
   public final Connection connection;
-  public final String address;
+  public final InetAddress address;
+  public final String saddress;
   public final int id;
   /** hex version of {@link #id}. */
   public final String sid;
@@ -42,15 +43,13 @@ public class ClajConnection {
   protected ClajRoom room;
 
   public ClajConnection(Connection connection) {
-    this(connection, AddressUtil.get(connection), AddressUtil.encodeId(connection));
-  }
-
-  /** Internal. */
-  public ClajConnection(Connection connection, String address, String encodedId) {
-    this.connection = Objects.requireNonNull(connection);
-    this.address = Objects.requireNonNull(address);
+    if (connection == null) throw new NullPointerException("connection is null");
+    this.connection = connection;
+    address = AddressUtil.get(connection);
+    if (address == null) throw new IllegalArgumentException("no address found for this connection");
+    saddress = AddressUtil.getString(connection);
     id = connection.getID();
-    sid = Objects.requireNonNull(encodedId);
+    sid = AddressUtil.encodeId(connection);
     packetRate = new Ratekeeper();
   }
 
@@ -76,8 +75,8 @@ public class ClajConnection {
       else connection.sendUDP(object);
     } catch (Exception e) { // Should not happen
       Log.err(e);
-      Log.info("Error sending packet to connection @. Disconnecting invalid client!", sid);
-      connection.close(DcReason.error);
+      Log.err("Error sending packet to connection @. Disconnecting invalid client!", sid);
+      close(DcReason.error);
     }
   }
 

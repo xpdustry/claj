@@ -53,12 +53,21 @@ public class ClajEvents {
       this.reason = reason;
     }
   }
+
   /** Currently, the only reason is for packet spam. */
   public static class ClientKickedEvent {
     public final ClajConnection connection;
 
     public ClientKickedEvent(ClajConnection connection) {
       this.connection = connection;
+    }
+  }
+  public static class HostKickedEvent {
+    /** At this point, the room is already closed and everyone have been kicked. */
+    public final ClajRoom room;
+
+    public HostKickedEvent(ClajRoom room) {
+      this.room = room;
     }
   }
 
@@ -167,13 +176,13 @@ public class ClajEvents {
     public final ClajConnection connection;
     /** Not {@code nul} means that action was denied because the room is closing. */
     public final ClajRoom room;
-    /** 
+    /**
      * {@code true} if the action was denied because of rate limit. <br>
-     * if both {@link #room} and field are {@code null} and {@code false}, 
+     * if both {@link #room} and field are {@code null} and {@code false},
      * this means that the room was not found.
      */
     public final boolean rateLimited;
-    
+
     public RoomInfoRejectedEvent(ClajConnection connection, ClajRoom room, boolean rateLimited) {
       this.connection = connection;
       this.room = room;
@@ -184,7 +193,7 @@ public class ClajEvents {
     public final ClajConnection connection;
     public final ClajType type;
     public final boolean rateLimited;
-    
+
     public RoomListRejectedEvent(ClajConnection connection, ClajType type, boolean rateLimited) {
       this.connection = connection;
       this.type = type;

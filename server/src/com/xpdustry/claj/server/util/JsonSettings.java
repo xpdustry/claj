@@ -99,7 +99,7 @@ public class JsonSettings implements Autosaver.Saveable {
   public <T> void addSerializer(Class<T> type, Json.Serializer<T> serializer) {
     json.setSerializer(type, serializer);
   }
-  
+
   public boolean isPlainJson() {
     return plainJson;
   }
@@ -152,16 +152,17 @@ public class JsonSettings implements Autosaver.Saveable {
 
   /** Loads all values. */
   public synchronized void load() {
-    Throwable error = null;
+    RuntimeException error = null;
     if (exists()) {
       try {
         loadValues(file());
+        //TODO: no, because this ignores decoding part
         // Backup the save file, as the values have now been loaded successfully
         if (backuped) file().copyTo(backupFile());
         modified = false;
         loaded = true;
         return;
-      } catch (Throwable e) { error = e; }
+      } catch (RuntimeException e) { error = e; }
     }
 
     if (backuped && backupExists()) {
@@ -177,6 +178,11 @@ public class JsonSettings implements Autosaver.Saveable {
         else throw e;
       }
       modified = false;
+
+    } else if (error != null) {
+      Log.err("Failed to load settings file", error);
+      if (errorHandler != null) errorHandler.get(error);
+      else throw error;
     }
 
     // if loading failed, it still counts
@@ -188,7 +194,7 @@ public class JsonSettings implements Autosaver.Saveable {
   public synchronized void save() {
     if (loaded && modified()) forceSave();
   }
-  
+
   @Override
   public void forceSave() {
     try {
@@ -203,6 +209,8 @@ public class JsonSettings implements Autosaver.Saveable {
 
   public synchronized void loadValues(Fi file) {
     try {
+      simple.clear();
+
       boolean compressed = false;
       if (!plainJson) {
         //read the first few bytes to check if it is compressed.

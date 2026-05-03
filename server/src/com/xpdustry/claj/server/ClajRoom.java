@@ -25,6 +25,7 @@ import arc.Events;
 import arc.math.Mathf;
 import arc.net.*;
 import arc.struct.IntMap;
+import arc.util.Ratekeeper;
 import arc.util.Threads;
 import arc.util.Time;
 
@@ -59,6 +60,8 @@ public class ClajRoom implements NetListener {
   public final IntMap<ClajConnection> clients = new IntMap<>();
   /** For debugging, to know how many packets were transferred from a client to a host, and vice versa. */
   public final NetworkSpeed transferredPackets = new NetworkSpeed(8);
+  /** Room state rate-limit. New states will simply be discarded. */
+  public final Ratekeeper stateRate = new Ratekeeper();
 
   /** Creation date of the room. Sets when {@link #create()} is called. */
   public long createdAt;
@@ -121,7 +124,7 @@ public class ClajRoom implements NetListener {
 
   /** Alerts the host of the client arrival. */
   public void connected(ClajConnection connection) {
-    if (closed || connection == null) return;
+    if (closed || connection == null || clients.containsKey(connection.id)) return;
 
     ConnectionJoinPacket p = cjp.get();
     p.conID = connection.id;
@@ -144,20 +147,27 @@ public class ClajRoom implements NetListener {
   public void disconnected(ClajConnection connection, DcReason reason) {
     if (closed || connection == null) return;
 
+    // Don't forget to update packet speed, as this is calculated between receives
+    transferredPackets.uploadMark(0);
+    transferredPackets.downloadMark(0);
+
     if (isHost(connection)) {
       Events.fire(new ConnectionLeftEvent(connection, this));
       close();
       return;
+    }
 
-    } else if (host.isConnected()) {
+    removeRoom(connection);
+    ClajConnection con = clients.remove(connection.id);
+    if (con == null) return; // In case of the event is received twice
+
+    if (host.isConnected()) {
       ConnectionClosedPacket p = ccp.get();
       p.conID = connection.id;
       p.reason = reason;
       host.send(p);
     }
 
-    removeRoom(connection);
-    clients.remove(connection.id);
     Events.fire(new ConnectionLeftEvent(connection, this));
   }
 
@@ -176,8 +186,9 @@ public class ClajRoom implements NetListener {
       close();
     } else {
       removeRoom(connection);
-      clients.remove(connection.id);
-      Events.fire(new ConnectionLeftEvent(connection, this));
+      ClajConnection con = clients.remove(connection.id);
+      // To avoid double fire if event is received twice
+      if (con != null) Events.fire(new ConnectionLeftEvent(connection, this));
     }
   }
 
@@ -240,6 +251,7 @@ public class ClajRoom implements NetListener {
     if (closed || connection == null || !host.isConnected() ||
         !clients.containsKey(connection.getID())) return;
 
+    //NOTE: ai slop is saying me this can lead to a buffer corruption...
     ConnectionPacketWrapPacket p = cwp.get();
     p.conID = connection.getID();
     p.raw = raw.data;
@@ -475,5 +487,10 @@ public class ClajRoom implements NetListener {
   @Override
   public boolean equals(Object o) {
     return o == this || o instanceof ClajRoom room && room.id == id;
+  }
+
+  @Override
+  public String toString() {
+    return sid;
   }
 }

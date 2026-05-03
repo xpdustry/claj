@@ -28,9 +28,12 @@ import arc.math.Mathf;
 import arc.util.CommandHandler;
 import arc.util.Log;
 import arc.util.Threads;
+import arc.util.Time;
 
 import com.xpdustry.claj.common.status.ClajType;
+import com.xpdustry.claj.common.status.CloseReason;
 import com.xpdustry.claj.common.util.Strings;
+import com.xpdustry.claj.common.util.Structs;
 import com.xpdustry.claj.server.plugin.Plugins;
 import com.xpdustry.claj.server.util.NetworkSpeed;
 
@@ -184,9 +187,9 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
         ClajVars.relay.rooms.eachValue(r -> {
           Log.info("&lk|&fr Room @: [@ client" + (r.clients.isEmpty() ? "" : "s") + ", type: @]", r.sid,
                    r.clients.size + 1, r.type);
-          Log.info("&lk| |&fr [H] Connection @&fr - @", r.host.sid, r.host.address);
+          Log.info("&lk| |&fr [H] Connection @&fr - @", r.host.sid, r.host.saddress);
           for (ClajConnection c : r.clients.values())
-            Log.info("&lk| |&fr [C] Connection @&fr - @", c.sid, c.address);
+            Log.info("&lk| |&fr [C] Connection @&fr - @", c.sid, c.saddress);
           Log.info("&lk|&fr");
         });
 
@@ -195,9 +198,9 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
         ClajVars.relay.rooms.eachValue(r -> {
           NetworkSpeed n = r.transferredPackets;
           Log.info("&lk|&fr @: @ client" + (r.clients.isEmpty() ? "" : "s") +
-                   ". @ p/s in, @ p/s out (@ in, @ out).",
-                   r.sid, r.clients.size + 1, Mathf.ceil(n.uploadSpeed()), Mathf.ceil(n.downloadSpeed()),
-                   n.totalUpload(), n.totalDownload());
+                   " (@). @ p/s in, @ p/s out (@ in, @ out).",
+                   r.sid, r.clients.size + 1, Strings.formatDuration(Time.timeSinceMillis(r.createdAt), true),
+                   Mathf.ceil(n.uploadSpeed()), Mathf.ceil(n.downloadSpeed()), n.totalUpload(), n.totalDownload());
         });
 
       } else {
@@ -205,6 +208,50 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       }
     });
 
+    register("close", "<room|list|all> <id|type|reason> [reason]", "Close a room or all rooms.", args -> {
+      switch (args[0]) {
+        case "room":
+          ClajRoom room = getRoom(args[1]);
+          if (room == null) return;
+          if (args.length == 2) {
+            ClajVars.relay.closeRoom(room);
+            Log.info("Room @ closed.", room.sid);
+            return;
+          }
+          CloseReason reason = getReason(args[2]);
+          if (reason == null) return;
+          ClajVars.relay.closeRoom(room, reason);
+          Log.info("Room @ closed for reason @.", room.sid, reason);
+          break;
+
+        case "list":
+          ClajType type = getType(args[1]);
+          if (type == null) return;
+          if (args.length == 2) {
+            int closed = ClajVars.relay.closeRoomList(type);
+            Log.info("@ rooms of type @ have been closed.", closed, type);
+            return;
+          }
+          reason = getReason(args[2]);
+          if (reason == null) return;
+          int closed = ClajVars.relay.closeRoomList(type, reason);
+          Log.info("@ rooms of type @ have been closed for reason @.", closed, type, reason);
+          break;
+
+        case "all":
+          reason = getReason(args[1]);
+          if (reason == null) return;
+          int rooms = ClajVars.relay.rooms.size;
+          ClajVars.relay.closeRooms(reason);
+          Log.info("@ rooms have been closed for reason @.", rooms, reason);
+          break;
+
+        default:
+          Log.err("Invalid argument! Must be 'room', 'list' or 'all'.");
+      }
+    });
+
+    //TODO: add 'all' argument?
     register("refresh", "<room|list> [id|type] [force]", "Refresh a room state or a room list.", args -> {
       switch (args[0]) {
         case "room":
@@ -213,11 +260,8 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
             return;
           }
 
-          ClajRoom room = ClajVars.relay.getRoom(args[1]);
-          if (room == null) {
-            Log.err("Room @ not found.", args[1]);
-            return;
-          }
+          ClajRoom room = getRoom(args[1]);
+          if (room == null) return;
 
           boolean force = args.length == 3 ? args[2].equals("force") : false;
           if (!force && args.length == 3)
@@ -242,15 +286,8 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
             return;
           }
 
-          ClajType type = ClajType.of(args[1]);
-
-          if (type == null) {
-            Log.err("Invalid CLaJ type.");
-            return;
-          } else if (!ClajVars.relay.types.containsKey(type)) {
-            Log.err("No room with type @ found.", type);
-            return;
-          }
+          ClajType type = getType(args[1]);
+          if (type == null) return;
 
           force = args.length == 3 ? args[2].equals("force") : false;
           if (!force && args.length == 3)
@@ -266,6 +303,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       }
     });
 
+    //TODO: handle SetField directly
     register("config", "[name] [default|value...]", "Configure server settings.", args -> {
       if (args.length == 0) {
         Log.info("Config values: [total: @]", ClajConfig.all.size);
@@ -277,6 +315,15 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
           }
           Log.info("&lk|&fr");
         });
+        return;
+
+      } else if (args[0].equals("reload")) {
+        try {
+          ClajConfig.reload();
+          Log.info("Configuration successfully reloaded.");
+        } catch (Exception e) {
+          Log.err(e.getMessage(), e.getCause() == null ? e : e.getCause());
+        }
         return;
       }
 
@@ -348,7 +395,7 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
         } else Log.info("Type blacklist is empty.");
         return;
       } else if (args.length == 1) {
-        Log.err("Missing type argument.");
+        Log.err("Missing 'type' argument.");
         return;
       }
 
@@ -356,21 +403,15 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       switch (args[0]) {
         case "add":
           type = ClajType.of(args[1]);
-          if (type == null) {
-            Log.err("Invalid CLaJ type.");
-            return;
-          } else if (ClajConfig.typeBlacklist.add(type))
-            Log.info("Type added to blacklist.");
+          if (type == null) Log.err("Invalid CLaJ type.");
+          else if (ClajConfig.typeBlacklist.add(type)) Log.info("Type added to blacklist.");
           else Log.err("Type already blacklisted.");
           break;
 
         case "remove":
           type = ClajType.of(args[1]);
-          if (type == null) {
-            Log.err("Invalid CLaJ type.");
-            return;
-          } else if (ClajConfig.typeBlacklist.remove(type))
-            Log.info("Type removed from blacklist.");
+          if (type == null) Log.err("Invalid CLaJ type.");
+          else if (ClajConfig.typeBlacklist.remove(type)) Log.info("Type removed from blacklist.");
           else Log.err("Type not blacklisted.");
           break;
 
@@ -384,32 +425,101 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       }
     });
 
-    register("say", "<roomId|all> <text...>", "Send a message to a room or all rooms.", args -> {
-      if (args[0].equals("all")) {
-        ClajVars.relay.rooms.eachValue(r -> r.message(args[1]));
-        Log.info("Message sent to all rooms.");
-        return;
-      }
+    register("say", "<room|list|all> <id|type|text> [text...]", "Send a message to a room or all rooms.", args -> {
+      switch (args[0]) {
+        case "room":
+          ClajRoom room = getRoom(args[1]);
+          if (room == null) return;
+          if (args.length == 2) {
+            Log.err("Missing 'text' argument!");
+            return;
+          }
+          room.message(args[2]);
+          Log.info("Message sent to room @.", args[1]);
+          break;
 
-      ClajRoom room = ClajVars.relay.getRoom(args[0]);
-      if (room != null) {
-        room.message(args[1]);
-        Log.info("Message sent to room @.", args[0]);
-      } else Log.err("Room @ not found.", args[0]);
+        case "list":
+          ClajType type = getType(args[1]);
+          if (type == null) return;
+          if (args.length == 2) {
+            Log.err("Missing 'text' argument!");
+            return;
+          }
+          ClajVars.relay.types.get(type).eachValue(r -> r.message(args[2]));
+          Log.info("Message sent to @ rooms of type @.", ClajVars.relay.types.get(type).size, type);
+          break;
+
+        case "all":
+          String text = Strings.join(" ", args, 1, args.length);
+          ClajVars.relay.rooms.eachValue(r -> r.message(text));
+          Log.info("Message sent to @ rooms.", ClajVars.relay.rooms.size);
+          break;
+
+        default:
+          Log.err("Invalid argument! Must be 'room', 'list' or 'all'.");
+      }
     });
 
-    register("alert", "<roomId|all> <text...>", "Send a popup message to the host of a room or all rooms.", args -> {
-      if (args[0].equals("all")) {
-        ClajVars.relay.rooms.eachValue(r -> r.popup(args[1]));
-        Log.info("Popup sent to all room hosts.");
-        return;
-      }
+    register("alert", "<room|list|all> <id|type|text> [text...]",
+             "Send a popup message to the host of a room or all rooms.", args -> {
+      switch (args[0]) {
+        case "room":
+          ClajRoom room = getRoom(args[1]);
+          if (room == null) return;
+          if (args.length == 2) {
+            Log.err("Missing 'text' argument!");
+            return;
+          }
+          room.popup(args[2]);
+          Log.info("Popup sent to the host of room @.", args[1]);
+          break;
 
-      ClajRoom room = ClajVars.relay.getRoom(args[0]);
-      if (room != null) {
-        room.popup(args[1]);
-        Log.info("Popup sent to the host of room @.", args[0]);
-      } else Log.err("Room @ not found.", args[0]);
+        case "list":
+          ClajType type = getType(args[1]);
+          if (type == null) return;
+          if (args.length == 2) {
+            Log.err("Missing 'text' argument!");
+            return;
+          }
+          ClajVars.relay.types.get(type).eachValue(r -> r.popup(args[2]));
+          Log.info("Popup sent to @ rooms of type @.", ClajVars.relay.types.get(type).size, type);
+          break;
+
+        case "all":
+          String text = Strings.join(" ", args, 1, args.length);
+          ClajVars.relay.rooms.eachValue(r -> r.popup(text));
+          Log.info("Popup sent to @ rooms.", ClajVars.relay.rooms.size);
+          break;
+
+        default:
+          Log.err("Invalid argument! Must be 'room', 'list' or 'all'.");
+      }
     });
+  }
+
+
+  protected ClajRoom getRoom(String arg) {
+    ClajRoom room = ClajVars.relay.getRoom(arg);
+    if (room == null) Log.err("Room @ not found.", arg);
+    return room;
+  }
+
+  protected ClajType getType(String arg) {
+    ClajType type = ClajType.of(arg);
+    if (type == null) Log.err("Invalid CLaJ type.");
+    else if (!ClajVars.relay.types.containsKey(type)) {
+      Log.err("No room with type @ found.", type);
+      type = null;
+    }
+    return type;
+  }
+
+  protected CloseReason getReason(String arg) {
+    CloseReason reason = Structs.find(CloseReason.all, r -> r.name().equalsIgnoreCase(arg));
+    if (reason == null) {
+      Log.err("No reason named '@' found. Must be one of: @", arg,
+              Strings.toSentence(Structs.generator(CloseReason.all), CloseReason::name));
+    }
+    return reason;
   }
 }

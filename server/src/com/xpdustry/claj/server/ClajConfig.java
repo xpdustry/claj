@@ -61,6 +61,17 @@ public class ClajConfig {
     }
   }
 
+  public static void reload() {
+    try {
+      if (settings == null) return;
+      settings.load();
+      all.each(Field::reload);
+    } catch (Exception e) {
+      String fileName = settings == null ? null : settings.file().path();
+      throw new RuntimeException("Failed to reload configuration of file '" + fileName + "'", e);
+    }
+  }
+
   /** Force save all fields. Do nothing if config was not initialized. */
   public static void save() {
     try {
@@ -123,7 +134,12 @@ public class ClajConfig {
     }
 
     protected T loadValue() {
-      return (T)settings.getOrPut(key, type, getDefault());
+      return settings.getOrPut(key, type, getDefault());
+    }
+
+    public void reload() {
+      loaded = false;
+      load();
     }
 
     public void load() {
@@ -263,10 +279,19 @@ public class ClajConfig {
       "Toggle debug log level",
       "Maximum number of connections (not clients) allowed on this server. Set to &lb0&lw to disable.",
       "Maximum number of rooms that can be created on this server. Set to &lb0&lw to disable.",
+      """
+      Maximum number of rooms allowed per ip address. Also used as a rate-limit per minute.
+      Set to &lb0&lw to disable.
+      """.trim(),
       "Maximum number of clients allowed per room. Set to &lb0&lw to disable.",
       """
       Limit for packet count sent within 3 sec that will lead to a disconnect.
-      Ignored for room hosts.
+      Ignored for room hosts. Set to &lb0&lw to disable.
+      """.trim(),
+      """
+      Limit for packet count sent within 3 sec, and per client, that will lead to a room closure.
+      In theory x30-50 bigger than the normal limit, because a room host can send a lot of packets.
+      Set to &lb0&lw to disable.
       """.trim(),
       """
       Limit of room join requests per minute per ip address.
@@ -280,6 +305,10 @@ public class ClajConfig {
       """
       Limit of room list requests per minute per ip address.
       The server will return an empty list. Set to &lb0&lw to disable.
+      """.trim(),
+      """
+      Limit of new states that can be received from room host per minute.
+      The server will ignore them. Set to &lb0&lw to disable.
       """.trim(),
       """
       Limit of clients that can wait for the new state of a room.
@@ -323,18 +352,21 @@ public class ClajConfig {
   public static Field<Boolean> debug = new Field<>("debug", fieldDescs.pop(), false, v ->
                                                    Log.level = v ? Log.LogLevel.debug : Log.LogLevel.info);
   public static Field<Integer> maxConnections = new Field<>("max-connections", fieldDescs.pop(), 1<<23);
-  public static Field<Integer> roomLimit = new Field<>("room-limit", fieldDescs.pop(), 1<<16);
+  public static Field<Integer> maxRooms = new Field<>("max-rooms", fieldDescs.pop(), 1<<16);
+  public static Field<Integer> roomLimit = new Field<>("room-limit", fieldDescs.pop(), 16);
   public static Field<Short> clientLimit = new Field<>("client-limit", fieldDescs.pop(), (short)(1<<8));
-  public static Field<Integer> spamLimit = new Field<>("spam-limit", fieldDescs.pop(), 300);
+  public static Field<Integer> spamLimit = new Field<>("spam-limit", fieldDescs.pop(), 1<<8);
+  public static Field<Integer> hostSpamLimit = new Field<>("host-spam-limit", fieldDescs.pop(), 1<<13);
   public static Field<Integer> joinLimit = new Field<>("join-limit", fieldDescs.pop(), 32);
   public static Field<Integer> infoLimit = new Field<>("info-limit", fieldDescs.pop(), 32);
   public static Field<Integer> listLimit = new Field<>("list-limit", fieldDescs.pop(), 32);
+  public static Field<Integer> stateLimit = new Field<>("state-limit", fieldDescs.pop(), 24);
   public static Field<Integer> infoRequestLimit = new Field<>("info-request-limit", fieldDescs.pop(), 1<<7);
   public static Field<Integer> listRequestLimit = new Field<>("list-request-limit", fieldDescs.pop(), 1<<10);
   public static Field<Boolean> acceptNoType = new Field<>("accept-no-type", fieldDescs.pop(), true);
   public static Field<Boolean> warnDeprecated = new Field<>("warn-deprecated", fieldDescs.pop(), true);
   public static Field<Boolean> warnClosing = new Field<>("warn-closing", fieldDescs.pop(), true);
-  public static Field<Float> closeWait = new Field<>("close-wait", fieldDescs.pop(), 10f);
+  public static Field<Integer> closeWait = new Field<>("close-wait", fieldDescs.pop(), 10);
   public static Field<Integer> stateLifetime = new Field<>("state-lifetime", fieldDescs.pop(), 60);
   public static Field<Integer> stateTimeout = new Field<>("state-timeout", fieldDescs.pop(), 20);
   public static Field<Integer> listLifetime = new Field<>("list-lifetime", fieldDescs.pop(), 60);

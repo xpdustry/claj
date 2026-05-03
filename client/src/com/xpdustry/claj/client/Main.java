@@ -22,6 +22,7 @@ package com.xpdustry.claj.client;
 import arc.ApplicationListener;
 import arc.Core;
 import arc.Events;
+import arc.util.Time;
 
 import mindustry.Vars;
 import mindustry.game.EventType;
@@ -50,9 +51,17 @@ public class Main extends Mod {
     // Pretty difficult to know when the player quits the game,
     // there is no event and StateChangeEvent is not reliable for that...
     Vars.ui.paused.hidden(() -> {
+      if (Vars.net.active() && !Vars.state.isMenu()) return;
+      Claj.get().closeRooms();
+    });
+    Vars.ui.restart.hidden(() -> {
+      if (Vars.state.isCampaign()) return;
+      Time.run(7f, () -> {
         if (Vars.net.active() && !Vars.state.isMenu()) return;
         Claj.get().closeRooms();
+      });
     });
+
     Events.run(EventType.HostEvent.class, this::stopClaj);
     Events.run(EventType.ClientPreConnectEvent.class, this::stopClaj);
 

@@ -60,7 +60,12 @@ public class AddressUtil {
     return generate(hash(address));
   }
 
-  public static String get(Connection con) {
+  public static InetAddress get(Connection con) {
+    InetSocketAddress a = con.getRemoteAddressTCP();
+    return a == null ? null : a.getAddress();
+  }
+
+  public static String getString(Connection con) {
     InetSocketAddress a = con.getRemoteAddressTCP();
     return a == null ? null : a.getAddress().getHostAddress();
   }

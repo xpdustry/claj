@@ -20,11 +20,8 @@
 package com.xpdustry.claj.server;
 
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
-
 import arc.func.Cons;
 import arc.func.Cons2;
-import arc.net.Connection;
 import arc.struct.*;
 import arc.util.*;
 
@@ -34,7 +31,7 @@ import com.xpdustry.claj.common.packets.RoomListPacket;
 import com.xpdustry.claj.common.status.ClajType;
 
 
-//TODO: find a way to do without timers.
+//TODO: find a way to get rid of timers.
 /** Class holding caches and CLaJ routines, such as cleaning AddressRater, closing afk rooms, pending request, etc. */
 public class ClajRoutines {
   /** Used to calculate whether a room is afk or not. */
@@ -58,23 +55,39 @@ public class ClajRoutines {
     listCache.each((_, c) -> c.send());
     listCache.clear();
     rates.clear();
+    afk.eachValue(Timer.Task::cancel);
+    afk.clear();
   }
 
-  public void clearRoomCache(ClajRoom room, boolean removeFromList) {
+  public void clearRoomCache(ClajRoom room, boolean removeList) {
     cancelRoomInfoTask(room);
     if (room.type == null) return;
-    CachedRoomList c = listCache.get(room.type);
+    CachedRoomList c = listCache.getNull(room.type);
     if (c == null) return;
     c.remove(room.id);
-    if (!removeFromList) return;
+    if (!removeList) return;
     c.send(); // in case of pending requests
     listCache.remove(room.type);
+  }
+
+  public void clearRoomListCache(ClajType type) {
+    if (type == null) return;
+    CachedRoomList c = listCache.remove(type);
+    if (c != null) c.send(); // in case of pending requests
+  }
+
+  public void clearClientCache(ClajConnection con) {
+    removeAddressRate(con);
+    //if (con.room == null) return;
+    //Seq<ClajConnection> cons = pendingInfoRequests.get(con.room.id);
+    //if (cons != null) cons.remove(con, true);
   }
 
   // end region
   // region room afk
 
   public void scheludeRoomAfk(ClajRoom room, Runnable afkClose) {
+    if (!room.clients.isEmpty()) return;
     int life = ClajConfig.afkTime.get();
     if (life <= 0) return;
     Timer.Task old = afk.put(room.id, Timer.schedule(() -> {
@@ -117,7 +130,7 @@ public class ClajRoutines {
 
   public Seq<ClajConnection> getPendingRoomRequests(ClajRoom room) {
     Seq<ClajConnection> cons = pendingInfoRequests.get(room.id);
-    if (cons == null) pendingInfoRequests.put(room.id, cons = new Seq<>(false, 4));
+    if (cons == null) pendingInfoRequests.put(room.id, cons = new Seq<>(false, 8));
     return cons;
   }
 
@@ -130,7 +143,7 @@ public class ClajRoutines {
 
   //TODO: crappy
   public int requestRoomList(ClajConnection con, ClajType type, LongMap<ClajRoom> fallbackRooms, Cons<Boolean> rejected) {
-    if (fallbackRooms == null) {
+    if (fallbackRooms == null || type == null) {
       rejected.get(false);
       return 4;
     }
@@ -152,8 +165,8 @@ public class ClajRoutines {
     }
   }
 
-  public void updateRoomState(ClajRoom room, boolean stateChanged) {
-    CachedRoomList cache = listCache.get(room.type);
+  public void updateRoom(ClajRoom room, boolean stateChanged) {
+    CachedRoomList cache = listCache.getNull(room.type);
     if (cache != null) cache.set(room, stateChanged);
   }
 
@@ -165,7 +178,7 @@ public class ClajRoutines {
   }
 
   public boolean refreshRoomList(ClajType type, boolean force, LongMap<ClajRoom> rooms) {
-    if (rooms == null) return false;
+    if (rooms == null || type == null) return false;
     CachedRoomList cache = getListCache(type, rooms);
     if (!force && cache.updating()) return false;
     cache.refresh(rooms);
@@ -272,14 +285,13 @@ public class ClajRoutines {
   // end region
   // region address rater
 
-  protected InetAddress getAddress(Connection con) {
-    InetSocketAddress a = con.getRemoteAddressTCP();
-    return a == null ? null : a.getAddress();
+  public AddressRater getAddressRate(ClajConnection con) {
+    return rates.get(con.address, () -> new AddressRater(con.address)).add(con);
   }
 
-  public AddressRater getAddressRate(ClajConnection con) {
-    InetAddress address = getAddress(con.connection);
-    return address == null ? null : rates.get(address, () -> new AddressRater(address));
+  public void removeAddressRate(ClajConnection con) {
+    AddressRater rate = rates.get(con.address);
+    if (rate != null) rate.remove(con);
   }
 
 
@@ -288,40 +300,59 @@ public class ClajRoutines {
     public final Ratekeeper joinRate = new Ratekeeper();
     public final Ratekeeper infoRate = new Ratekeeper();
     public final Ratekeeper listRate = new Ratekeeper();
+    public final Ratekeeper createRate = new Ratekeeper();
+    protected final IntSet connections = new IntSet(8);
     protected Timer.Task clean;
+    protected int rooms;
 
     public AddressRater(InetAddress address) {
       this.address = address;
-      rescheludeClean();
     }
 
-    public void rescheludeClean() {
+    public AddressRater add(ClajConnection con) {
+      connections.add(con.id);
+      if (clean != null) clean.cancel();
+      return this;
+    }
+
+    public void remove(ClajConnection con) {
+      connections.remove(con.id);
+      if (!connections.isEmpty()) return;
+
       if (clean != null) clean.cancel();
       int life = ClajConfig.raterLifetime.get();
       if (life <= 0) return;
       clean = Timer.schedule(() -> {
-        if (clean != null) clean.cancel();
         clean = null;
         rates.remove(address);
       }, life);
     }
 
     public boolean allowJoin() {
-      rescheludeClean();
       int limit = ClajConfig.joinLimit.get() * 2; // because joining makes 2 requests
       return limit <= 0 || joinRate.allow(60000L, limit);
     }
 
     public boolean allowInfo() {
-      rescheludeClean();
       int limit = ClajConfig.infoLimit.get();
       return limit <= 0 || infoRate.allow(60000L, limit);
     }
 
     public boolean allowList() {
-      rescheludeClean();
       int limit = ClajConfig.listLimit.get();
       return limit <= 0 || listRate.allow(60000L, limit);
+    }
+
+    public boolean allowCreate() {
+      int limit = ClajConfig.roomLimit.get();
+      if (limit <= 0) return true;
+      if (rooms >= limit || !createRate.allow(60000L, limit)) return false;
+      rooms++;
+      return true;
+    }
+
+    public void removeRoom() {
+      if (rooms > 0) rooms--;
     }
   }
 

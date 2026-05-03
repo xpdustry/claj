@@ -201,6 +201,7 @@ public class CreateRoomDialog extends BaseDialog {
     Collapser coll = new Collapser(src, false);
     dest.table(head -> {
       head.add(label, Pal.accent).pad(5).growX().left().bottom();
+      //TODO: sorting button (by ping or name)
       if (add != null)
         Vars.ui.addDescTooltip(head.button(Icon.add, Styles.emptyi, add).size(40f).padRight(3).right()
                                    .get(), "@server.add");
@@ -307,8 +308,20 @@ public class CreateRoomDialog extends BaseDialog {
     }, c -> {
       Vars.ui.loadfrag.hide();
       t.cancel();
-      if (link == null) Vars.ui.showErrorMessage("@claj.manage.room-creation-failed");
-      else showError(c);
+      if (c == null) {
+        link = null;
+        return;
+      }
+      switch (c) {
+        case error, closed:
+          if (link == null) {
+            Vars.ui.showErrorMessage("@claj.manage.room-creation-failed");
+            break;
+          }
+          //$FALL-THROUGH$
+        default:
+          showError(c);
+      }
       link = null;
     }, e -> {
       Vars.net.handleException(e);

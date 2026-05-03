@@ -74,14 +74,14 @@ public class ClajVars {
     Log.LogHandler log = (level, text) -> {
       //err has red text instead of reset.
       if(level == Log.LogLevel.err) text = text.replace(ColorCodes.reset, ColorCodes.lightRed + ColorCodes.bold);
-      text = Log.format(Strings.format(logFormat, logDateformat.format(LocalDateTime.now()), 
+      text = Log.format(Strings.format(logFormat, logDateformat.format(LocalDateTime.now()),
                                        tags[level.ordinal()], text));
       System.out.println(text);
     };
 
     Log.logger = (level, text) -> {
-      // Avoid log mixing
-      synchronized (Log.logger) {
+      //// Avoid log mixing
+      //synchronized (Log.logger) {
         int i = 0, nl = text.indexOf('\n');
         while (nl >= 0) {
           log.log(level, text.substring(i, nl));
@@ -89,7 +89,7 @@ public class ClajVars {
           nl = text.indexOf('\n', i);
         }
         log.log(level, i == 0 ? text : text.substring(i));
-      }
+      //}
     };
 
     Log.formatter = (text, useColors, arg) -> {

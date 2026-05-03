@@ -66,7 +66,7 @@ public class PluginLogger {
   public PluginLogger(String plugin, String topic) {
     this.plugin = plugin;
     this.topic = topic != null && !(topic = topic.trim()).isEmpty() ? topic : null;
-    
+
     String tag = "";
     if (plugin != null) tag += Strings.format(pluginTopicFormat, plugin) + ' ';
     if (topic != null) tag += Strings.format(classTopicFormat, topic) + ' ';
@@ -83,8 +83,8 @@ public class PluginLogger {
     } else if (th != null) text = Strings.getStackTrace(th);
     if (text == null) text = "";
 
-    // Avoid log mixing
-    synchronized (Log.logger) {
+    //// Avoid log mixing
+    //synchronized (Log.logger) {
       int i = 0, nl = text.indexOf('\n');
       while (nl >= 0) {
         Log.logger.log(level, tag + text.substring(i, nl));
@@ -92,7 +92,7 @@ public class PluginLogger {
         nl = text.indexOf('\n', i);
       }
       Log.logger.log(level, tag + (i == 0 ? text : text.substring(i)));
-    }
+    //}
   }
 
   public void log(LogLevel level, String text, Throwable th, Object... args) { logImpl(level, text, th, args); }
