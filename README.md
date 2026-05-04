@@ -9,15 +9,6 @@ This is a bundled, reworked and optimized version of the [CLaJ server](https://g
 > The protocol has been reworked and optimized and CLaJ links have also been changed to a more standard version.
 
 
-## Mindustry v8 note
-Mindustry v8 has been released, and many changes have been made. Mods must now make changes to be compatible with this version. <br>
-The mod is not officially updated to this version, at this time, but it remains compatible with it.
-
-To install the mod for Mindustry v8, just go to the mod browser, search for **'claj'**, then click ``View Releases``
-and install the latest version named **'CLaJ for Mindustry v8'**. <br>
-Or you can download the mod file from the [releases section](https://github.com/Xpdustry/claj/releases) of pre-releases versions and place it into the mod folder of your game.
-
-
 ## How to use
 ### Client
 **First, if you don't have the mod yet, you can find it in the mod browser by searching for 'claj' and then installing it.**
