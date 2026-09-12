@@ -56,6 +56,10 @@ public class NetListenerEvent implements Runnable, Pool.Poolable {
         case 4 -> listener.idle(connection);
         default -> throw new RuntimeException("Invalid event type: " + type);
       }
+    } catch (Exception e) {
+      ArcNet.handleError(new ArcNetException("Error reading delayed packet from connection: " + connection, e));
+      boolean closed = e.getMessage() != null && e.getMessage().contains("closed");
+      connection.close(closed ? DcReason.closed : DcReason.error);
     } finally {
       if (!pool.offer(this)) ByteBufferPool.free(buffer);
     }

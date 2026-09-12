@@ -1,6 +1,6 @@
 /**
  * This file is part of MoreCommands. The plugin that adds a bunch of commands to your server.
- * Copyright (c) 2026  ZetaMap
+ * Copyright (c) 2025-2026  ZetaMap
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ public class Autosaver {
   /** Called when a save fail. */
   public static Cons2<Saveable, Throwable> errorHandler;
 
-  /** Init the auto saver to run a save every seconds. */
+  /** Init the auto-saver to run a save every seconds. */
   public static void init(Application app) {
     app.addListener(new ApplicationListener() {
       final Timekeeper rate = Timekeeper.ofSeconds(1);
@@ -42,27 +42,27 @@ public class Autosaver {
 
   /** Adds to the {@code normal} priority. */
   public static void add(Saveable saveable) {
-    add(saveable, SavePriority.normal);
+    add(saveable, Priority.normal);
   }
 
-  public static void add(Saveable saveable, SavePriority priority) {
+  public static void add(Saveable saveable, Priority priority) {
     remove(saveable);
     priority.saves.add(saveable);
   }
 
   public static void remove(Saveable saveable) {
-    for (SavePriority p : SavePriority.all) {
+    for (Priority p : Priority.all) {
       if (p.saves.remove(saveable)) break;
     }
   }
 
   /** Don't do that! */
   public static void clear() {
-    for (SavePriority p : SavePriority.all) clear(p);
+    for (Priority p : Priority.all) clear(p);
   }
 
   /** Don't do that! */
-  public static void clear(SavePriority priority) {
+  public static void clear(Priority priority) {
     priority.saves.clear();
   }
 
@@ -70,19 +70,19 @@ public class Autosaver {
     return priorityOf(saveable) != null;
   }
 
-  public static boolean has(Saveable saveable, SavePriority priority) {
+  public static boolean has(Saveable saveable, Priority priority) {
     return priority.saves.contains(saveable);
   }
 
-  public static SavePriority priorityOf(Saveable saveable) {
-    for (SavePriority p : SavePriority.all) {
+  public static Priority priorityOf(Saveable saveable) {
+    for (Priority p : Priority.all) {
       if (has(saveable, p)) return p;
     }
     return null;
   }
 
   public static boolean saveNeeded() {
-    for (SavePriority p : SavePriority.all) {
+    for (Priority p : Priority.all) {
       if (p.saves.contains(Saveable::modified)) return true;
     }
     return false;
@@ -91,8 +91,10 @@ public class Autosaver {
   /** Save all registered things now, only if modified. */
   public static boolean save() {
     if (!saveNeeded()) return false;
-    for (SavePriority p : SavePriority.all) {
+    Log.debug("Running auto-save...");
+    for (Priority p : Priority.all) {
       p.saves.each(Saveable::modified, s -> {
+        Log.debug("Saving @.", s.name());
         try { s.save(); }
         catch (Throwable t) {
           Log.err("Failed to save " + s.name(), t);
@@ -102,11 +104,13 @@ public class Autosaver {
     }
     return true;
   }
-  
+
   /** Save all registered things now, even not modified. */
   public static boolean forceSave() {
-    for (SavePriority p : SavePriority.all) {
+    Log.debug("Running force-save...");
+    for (Priority p : Priority.all) {
       p.saves.each(s -> {
+        Log.debug("Saving @.", s.name());
         try { s.forceSave(); }
         catch (Throwable t) {
           Log.err("Failed to save " + s.name(), t);
@@ -117,7 +121,7 @@ public class Autosaver {
     return true;
   }
 
-  
+
   /** Defines a things that can be saved by the {@link Autosaver}. */
   public interface Saveable {
     /** Used for logging. */
@@ -129,7 +133,7 @@ public class Autosaver {
 
 
   /** Defines the order to save things. */
-  public enum SavePriority {
+  public enum Priority {
     /** Highest save priority. Commonly the things that manages settings. */
     high,
     /** Default save priority. Commonly for settings things. */
@@ -137,7 +141,7 @@ public class Autosaver {
     /** Lowest save priority, for things that should be saved last. */
     low;
 
-    static final SavePriority[] all = values();
+    static final Priority[] all = values();
     // More simple to store the saveable things here.
     // Because the priority should not be modified after registration.
     final Seq<Saveable> saves = new Seq<>();

@@ -26,11 +26,12 @@ import arc.func.Prov;
 import arc.struct.ObjectSet;
 import arc.struct.Seq;
 import arc.util.Log;
-import arc.util.Structs;
+import arc.util.Log.LogLevel;
 import arc.util.serialization.*;
 
 import com.xpdustry.claj.common.status.ClajType;
 import com.xpdustry.claj.common.util.Strings;
+import com.xpdustry.claj.common.util.Structs;
 import com.xpdustry.claj.server.util.Autosaver;
 import com.xpdustry.claj.server.util.JsonSettings;
 
@@ -55,9 +56,10 @@ public class ClajConfig {
       if (settings == null) init();
       settings.load();
       all.each(Field::load);
+      settings.backup();
     } catch (Exception e) {
-      String fileName = settings == null ? null : settings.file().path();
-      throw new RuntimeException("Failed to load configuration of file '" + fileName + "'", e);
+      String file = settings == null ? fileName : settings.file().path();
+      throw new RuntimeException("Failed to load configuration of file '" + file + "'", e);
     }
   }
 
@@ -67,8 +69,8 @@ public class ClajConfig {
       settings.load();
       all.each(Field::reload);
     } catch (Exception e) {
-      String fileName = settings == null ? null : settings.file().path();
-      throw new RuntimeException("Failed to reload configuration of file '" + fileName + "'", e);
+      String file = settings == null ? fileName : settings.file().path();
+      throw new RuntimeException("Failed to reload configuration of file '" + file + "'", e);
     }
   }
 
@@ -79,8 +81,8 @@ public class ClajConfig {
       all.each(Field::save);
       settings.save();
     } catch (Exception e) {
-      String fileName = settings == null ? null : settings.file().path();
-      throw new RuntimeException("Failed to sve configuration in file '" + fileName + "'", e);
+      String file = settings == null ? fileName : settings.file().path();
+      throw new RuntimeException("Failed to sve configuration in file '" + file + "'", e);
     }
   }
 
@@ -113,7 +115,7 @@ public class ClajConfig {
       this.changed = changed == null ? _ -> {} : changed;
 
       if (register) all.add(this);
-      Autosaver.add(this, Autosaver.SavePriority.normal);
+      Autosaver.add(this, Autosaver.Priority.normal);
     }
 
     /** @return "field '" + {@link key} + "'". */
@@ -277,6 +279,11 @@ public class ClajConfig {
 
   private static Seq<String> fieldDescs = Seq.with(
       "Toggle debug log level",
+      Strings.format("""
+      Write logs of defined level, and above, to files.
+      Possible values, in order, are: @
+      Set to &lbdebug&lw to write everything, or &lbnone&lw to write nothing.
+      """, Strings.toSentence(Structs.iterable(LogLevel.values()), LogLevel::name), ", ", " or "),
       "Maximum number of connections (not clients) allowed on this server. Set to &lb0&lw to disable.",
       "Maximum number of rooms that can be created on this server. Set to &lb0&lw to disable.",
       """
@@ -360,8 +367,9 @@ public class ClajConfig {
   /** Must be set at initialization and not modified after. {@code -1} means not initialized. */
   public static int serverVersion = -1;
 
-  public static Field<Boolean> debug = new Field<>("debug", fieldDescs.pop(), false, v ->
-                                                   Log.level = v ? Log.LogLevel.debug : Log.LogLevel.info);
+  public static Field<Boolean> debug = new Field<>("debug", fieldDescs.pop(), false,
+                                                   v -> Log.level = v ? LogLevel.debug : LogLevel.info);
+  public static Field<LogLevel> writeLogLevel = new Field<>("write-log-level", fieldDescs.pop(), LogLevel.err);
   public static Field<Integer> maxConnections = new Field<>("max-connections", fieldDescs.pop(), 1<<23);
   public static Field<Integer> maxRooms = new Field<>("max-rooms", fieldDescs.pop(), 1<<16);
   public static Field<Integer> roomLimit = new Field<>("room-limit", fieldDescs.pop(), 16);

@@ -1,6 +1,6 @@
 /**
  * This file is part of MoreCommands. The plugin that adds a bunch of commands to your server.
- * Copyright (c) 2025  ZetaMap
+ * Copyright (c) 2025-2026  ZetaMap
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,14 +50,24 @@ public class JsonSettings implements Autosaver.Saveable {
   protected Json json;
   protected boolean loaded, modified, autosaved, backuped, compressed;
 
-  public JsonSettings(Fi file) { this(file, true, true, false, false); }
+  public JsonSettings(Fi file) {
+    this(file, true, true, false, false);
+  }
   /** Enables backups implicitly. */
-  public JsonSettings(Fi file, Fi backupFile) { this(file, backupFile, true, true, true, false); }
-  public JsonSettings(Fi file, boolean autosave) { this(file, true, autosave, false, false); }
+  public JsonSettings(Fi file, Fi backupFile) {
+    this(file, backupFile, true, true, true, false);
+  }
+  public JsonSettings(Fi file, boolean autosave) {
+    this(file, true, autosave, false, false);
+  }
   /** Enables backups implicitly. */
-  public JsonSettings(Fi file, Fi backupFile, boolean autosave) { this(file, backupFile, true, autosave, true, false); }
+  public JsonSettings(Fi file, Fi backupFile, boolean autosave) {
+    this(file, backupFile, true, autosave, true, false);
+  }
   /** Prefer compression when using binary json. */
-  public JsonSettings(Fi file, boolean plainJson, boolean autosave) { this(file, plainJson, autosave, false, !plainJson); }
+  public JsonSettings(Fi file, boolean plainJson, boolean autosave) {
+    this(file, plainJson, autosave, false, !plainJson);
+  }
   /** Enables backups implicitly. Prefer compression when using binary json. */
   public JsonSettings(Fi file, Fi backupFile, boolean plainJson, boolean autosave) {
     this(file, backupFile, plainJson, autosave, true, !plainJson);
@@ -76,7 +86,8 @@ public class JsonSettings implements Autosaver.Saveable {
    * @param plainJson whether settings are stored in plain or binary json.
    * @param autosave to take advantage of regularly save.
    */
-  public JsonSettings(Fi file, Fi backupFile, boolean plainJson, boolean autosave, boolean backuped, boolean compressed) {
+  public JsonSettings(Fi file, Fi backupFile, boolean plainJson, boolean autosave, boolean backuped,
+                      boolean compressed) {
     this.file = file;
     if (backupFile == null) {
       String extension = file.extension();
@@ -107,8 +118,8 @@ public class JsonSettings implements Autosaver.Saveable {
   public void setAutosaved(boolean autosave) {
     if (autosave == autosaved) return;
     autosaved = autosave;
-    // File should be the last thing saved
-    if (autosaved) Autosaver.add(this, Autosaver.SavePriority.low);
+    // Files should be the last thing saved
+    if (autosaved) Autosaver.add(this, Autosaver.Priority.low);
     else Autosaver.remove(this);
   }
 
@@ -143,56 +154,68 @@ public class JsonSettings implements Autosaver.Saveable {
 
   @Override
   public boolean modified() {
-    return modified;// || !exists();
+    return modified;// || !exists(); // Does to many syscalls
+  }
+
+  protected void setModified() {
+    modified = true;
   }
 
   public boolean loaded() {
     return loaded;
   }
 
-  /** Loads all values. */
-  public synchronized void load() {
+  /**
+   * Loads all values.
+   * <p>
+   * {@link #backup()} must be called after loading and decoding the values to secure the content.
+   *
+   * @return whether the values have been successfully loaded. (not decoded!)
+   */
+  public synchronized boolean load() {
     RuntimeException error = null;
+    boolean success = false;
+
     if (exists()) {
       try {
         loadValues(file());
-        //TODO: no, because this ignores decoding part
-        // Backup the save file, as the values have now been loaded successfully
-        if (backuped) file().copyTo(backupFile());
         modified = false;
-        loaded = true;
-        return;
+        success = true;
       } catch (RuntimeException e) { error = e; }
     }
 
-    if (backuped && backupExists()) {
-      if (error != null) Log.err("Failed to load settings file, attempting to load backup: @", error.toString());
+    if (!success && isBackuped() && backupExists()) {
+      if (error != null) Log.err("Failed to load settings, attempting to load backup: @", error.toString());
       try {
         loadValues(backupFile());
-        // Copy back the file
+        // Rename original and copy back the file
+        if (exists()) moveCorrupted(file());
         backupFile().copyTo(file());
         Log.info("Loaded backup settings file successfully!");
+        modified = false;
+        success = true;
       } catch (Throwable e) {
         Log.err("Failed to load backup settings file", e);
         if (errorHandler != null) errorHandler.get(e);
         else throw e;
       }
-      modified = false;
 
     } else if (error != null) {
       Log.err("Failed to load settings file", error);
       if (errorHandler != null) errorHandler.get(error);
       else throw error;
-    }
+
+    } else success = true; // no file
 
     // if loading failed, it still counts
     loaded = true;
+    return success;
   }
 
   /** Saves all values. */
   @Override
   public synchronized void save() {
-    if (loaded && modified()) forceSave();
+    if (loaded() && modified()) forceSave();
   }
 
   @Override
@@ -207,16 +230,33 @@ public class JsonSettings implements Autosaver.Saveable {
     modified = false;
   }
 
+  /** Copies content from {@link #file()} to {@link #backupFile()}. */
+  public void backup() {
+    if (isBackuped() && exists()) file().copyTo(backupFile());
+  }
+
+  /** Save loaded values to {@link #backupFile()}. */
+  public void backupLoaded() {
+    if (!loaded()) return;
+    try {
+      saveValues(backupFile());
+    } catch (Throwable e) {
+      Log.err("Error writing backup settings", e);
+      if (errorHandler != null) errorHandler.get(e);
+      else throw e;
+    }
+  }
+
   public synchronized void loadValues(Fi file) {
     try {
       simple.clear();
 
       boolean compressed = false;
-      if (!plainJson) {
+      if (!isPlainJson()) {
         //read the first few bytes to check if it is compressed.
         byte[] header = new byte[2];
         file.readBytes(header, 0, header.length);
-        compressed = header[0] == (byte)0x78 && (header[1] == (byte)0x01 || header[1] == (byte)0x5E ||
+        compressed = header[0] == (byte)0x78 && (header[1] == (byte)0x01 || header[1] == (byte)0x5e ||
                                                  header[1] == (byte)0x9c || header[1] == (byte)0xda);
       }
 
@@ -239,7 +279,7 @@ public class JsonSettings implements Autosaver.Saveable {
   @SuppressWarnings("resource")
   public synchronized void saveValues(Fi file) {
     try {
-      if (plainJson) {
+      if (isPlainJson()) {
         try (Writer writer = new BufferedWriter(file.writer(false), 8192)) {
           builder.reset();
 
@@ -248,15 +288,15 @@ public class JsonSettings implements Autosaver.Saveable {
             builder.set(e.key, simple.get(e.key, e.value));
           builder.close();
 
-          if (compressed) Strings.toJson(builder.getJson(), writer, JsonWriter.OutputType.json);
+          if (isCompressed()) Strings.toJson(builder.getJson(), writer, JsonWriter.OutputType.json);
           else Strings.jsonPrettyPrint(builder.getJson(), writer, JsonWriter.OutputType.json);
           builder.reset();
         }
 
       } else {
         try (OutputStream write = file.write(false, 8192);
-             OutputStream out = compressed ? new FastDeflaterOutputStream(write) : write) {
-          // place here, like that json doesn't become valid when an error occur
+             OutputStream out = isCompressed() ? new FastDeflaterOutputStream(write) : write) {
+          // Open file here, so that json become invalid when an error occur
           UBJsonWriter writer = new UBJsonWriter(out);
 
           writer.object();
@@ -273,12 +313,20 @@ public class JsonSettings implements Autosaver.Saveable {
       }
 
     } catch (Throwable e) {
-      // Rename the file, like that the user know the file causing issues.
-      // And we will load a backup, if possible, next time.
-      file.moveTo(file.parent().child(file.nameWithoutExtension() + "_corrupted-" + System.currentTimeMillis() +
-                                      "." + file.extension()));
+      moveCorrupted(file);
       throw new RuntimeException("Error writing file: " + file, e);
     }
+  }
+
+  /**
+   * Rename the file so the user know the one causing issues. <br>
+   * And we will try loading a backup next time, if possible.
+   */
+  protected void moveCorrupted(Fi file) {
+    String extension = file.extension();
+    String newName = file.nameWithoutExtension() + "_corrupted-" + System.currentTimeMillis();
+    if (!extension.isEmpty()) newName += "." + extension;
+    file.moveTo(file.parent().child(newName));
   }
 
   /** @return whether the file exists or not. */
@@ -308,8 +356,10 @@ public class JsonSettings implements Autosaver.Saveable {
 
   /** Clears all preference values. */
   public synchronized void clear() {
+    boolean wasNotEmpty = values.notEmpty();
     values.clear();
-    modified = true;
+    simple.clear();
+    if (wasNotEmpty) setModified();
   }
 
   public synchronized Iterable<String> keys() {
@@ -329,8 +379,10 @@ public class JsonSettings implements Autosaver.Saveable {
   }
 
   public synchronized void remove(String name) {
+    boolean wasPresent = has(name);
     values.remove(name);
-    modified = true;
+    simple.remove(name);
+    if (wasPresent) setModified();
   }
 
   /**
@@ -365,13 +417,13 @@ public class JsonSettings implements Autosaver.Saveable {
   public synchronized <K, E> void put(String name, Class<E> elementType, Class<K> keyType, Object value) {
     // Store primitive, null and JsonValue values directly instead of converting it to JsonValue
     if (value == null || isKnownType(value.getClass())) {
-      simple.put(name, value);
+      Object old = simple.put(name, value);
       values.put(name, null); // reserve the key
-      modified = true;
+      if (value == null || value != old) setModified();
       return;
     } else if (value instanceof JsonValue) {
-      values.put(name, (JsonValue)value);
-      modified = true;
+      Object old = values.put(name, (JsonValue)value);
+      if (value != old) setModified();
       return;
     }
 
@@ -384,7 +436,7 @@ public class JsonSettings implements Autosaver.Saveable {
     values.put(name, builder.getJson());
     simple.remove(name); // in case of type change
     builder.reset();
-    modified = true;
+    setModified();
   }
 
   public <T> T get(String name, Class<T> type, Prov<T> def) {
@@ -498,16 +550,22 @@ public class JsonSettings implements Autosaver.Saveable {
 
   /** Runs the specified code once, and never again. */
   public void getBoolOnce(String name, Runnable run) {
-    if (!getBool(name)) {
-      run.run();
-      put(name, true);
-    }
+    if (getBool(name)) return;
+    run.run();
+    put(name, true);
   }
 
-  /** Returns {@code false} once, and never again. */
+  /** Returns {@code true} once, and never again. */
   public boolean getBoolOnce(String name) {
+    boolean val = !getBool(name);
+    if (val) put(name, true);
+    return val;
+  }
+
+  /** Returns the last states. */
+  public boolean toggle(String name) {
     boolean val = getBool(name);
-    if (!val) put(name, true);
+    put(name, !val);
     return val;
   }
 

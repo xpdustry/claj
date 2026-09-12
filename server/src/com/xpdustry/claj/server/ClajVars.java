@@ -35,6 +35,8 @@ import com.xpdustry.claj.server.plugin.Plugins;
 
 
 public class ClajVars {
+  protected static final Object[] empty = {};
+
   public static ClajRelay relay;
   public static ClajControl control;
 
@@ -50,6 +52,10 @@ public class ClajVars {
   public static DateTimeFormatter logDateformat = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
   public static String logFormat = "&lk&fb[@]&fr @ @&fr";
   public static String textFormat = "&fb&lb@&fr";
+  public static int maxLogLength = 1024 * 1024;
+  public static Fi logFolder = workingDirectory.child("logs");
+  /** The file to which the logs are currently being written. */
+  public static Fi currentLogFile;
 
   /** Skip loading of plugins. Or new plugins, if sets while loading them. */
   public static boolean skipPluginLoading;
@@ -78,27 +84,40 @@ public class ClajVars {
     Log.LogHandler log = (level, text) -> {
       //err has red text instead of reset.
       if(level == Log.LogLevel.err) text = text.replace(ColorCodes.reset, ColorCodes.lightRed + ColorCodes.bold);
-      text = Log.format(Strings.format(logFormat, logDateformat.format(LocalDateTime.now()),
-                                       tags[level.ordinal()], text));
-      System.out.println(text);
+      text = Strings.format(logFormat, logDateformat.format(LocalDateTime.now()), tags[level.ordinal()], text);
+
+      System.out.println(Log.format(text, empty));
+      if (ClajConfig.writeLogLevel.get().ordinal() > level.ordinal()) return;
+      logToFile(Log.formatColors(text, false, empty));
     };
 
     Log.logger = (level, text) -> {
-      //// Avoid log mixing
-      //synchronized (Log.logger) {
-        int i = 0, nl = text.indexOf('\n');
-        while (nl >= 0) {
-          log.log(level, text.substring(i, nl));
-          i = nl + 1;
-          nl = text.indexOf('\n', i);
-        }
-        log.log(level, i == 0 ? text : text.substring(i));
-      //}
+      int i = 0, nl = text.indexOf('\n');
+      while (nl >= 0) {
+        log.log(level, text.substring(i, nl));
+        i = nl + 1;
+        nl = text.indexOf('\n', i);
+      }
+      log.log(level, i == 0 ? text : text.substring(i));
     };
 
     Log.formatter = (text, useColors, arg) -> {
       text = Strings.format(text.replace("@", textFormat), arg);
       return useColors ? Log.addColors(text) : Log.removeColors(text);
     };
+  }
+
+  /** Does not remove ANSI codes. */
+  public static void logToFile(String text) {
+    if (currentLogFile != null && currentLogFile.length() > maxLogLength) {
+      currentLogFile.writeString("[End of log file. Date: " + logDateformat.format(LocalDateTime.now()) + "]\n", true);
+      currentLogFile = null;
+    }
+    if (currentLogFile == null) {
+      int i = 0;
+      while (logFolder.child("log-" + i + ".txt").length() >= maxLogLength) i++;
+      currentLogFile = logFolder.child("log-" + i + ".txt");
+    }
+    currentLogFile.writeString(text + "\n", true);
   }
 }
