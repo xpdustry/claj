@@ -24,6 +24,7 @@ import java.lang.management.*;
 import com.sun.management.OperatingSystemMXBean;
 
 import arc.Core;
+import arc.files.Fi;
 import arc.util.OS;
 
 import com.xpdustry.claj.common.status.ClajVersion;
@@ -37,15 +38,15 @@ import com.xpdustry.claj.server.util.NetworkSpeed;
 public class ClajStateSummary {
   private static final RuntimeMXBean jvm = ManagementFactory.getRuntimeMXBean();
   private static final MemoryMXBean mem = ManagementFactory.getMemoryMXBean();
-  private static final OperatingSystemMXBean cpu = ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class);
+  private static final OperatingSystemMXBean os = ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class);
 
   public final ClajVersion version;
   public final int majorVersion;
   public final String javaVersion;
   public final long uptime;
   public final int mainTps, netTps;
-  public final long usedHeap, allocatedHeap, maxHeap;
-  public final long usedMeta, allocatedMeta, maxMeta;
+  public final long usedMemory, allocatedMemory, maxMemory;
+  public final long usedBuffer, maxBuffer;
   //TODO: add buffers summary?
   /** in %. {@code -1} if unknown. */
   public final float javaCpuLoad, systemCpuLoad;
@@ -53,26 +54,33 @@ public class ClajStateSummary {
   /** This ignores Ethernet/IP/TCP/ArcNet headers. {@code -1} if disabled. */
   public final long uploadSpeed, downloadSpeed, totalUpload, totalDownload;
   public final long uploadTransfert, downloadTransfert, totalTransfertUpload, totalTransfertDownload;
+  /** This only monitor CLaJ server directory. */
+  public final long usedDisk, freeDisk, maxDisk;
 
   @SuppressWarnings("deprecation")
   ClajStateSummary() {
     version =  ClajVars.version;
     majorVersion = ClajVars.version.majorVersion;
     javaVersion = OS.javaVersion;
+
     uptime = jvm.getUptime();
     mainTps = Core.graphics.getFramesPerSecond();
     netTps = ClajVars.relay.getFramesPerSecond();
 
-    MemoryUsage usage = mem.getHeapMemoryUsage();
-    usedHeap = usage.getUsed();
-    allocatedHeap = usage.getCommitted();
-    maxHeap = usage.getMax();
-    usage = mem.getNonHeapMemoryUsage();
-    usedMeta = usage.getUsed();
-    allocatedMeta = usage.getCommitted();
-    maxMeta = usage.getMax();
-    javaCpuLoad = (float)(cpu.getProcessCpuLoad()*100);
-    systemCpuLoad = (float)(cpu.getSystemCpuLoad()*100);
+    MemoryUsage heap = mem.getHeapMemoryUsage(), nonHeap = mem.getNonHeapMemoryUsage();
+    usedMemory = heap.getUsed() + nonHeap.getUsed();
+    allocatedMemory = heap.getCommitted() + nonHeap.getCommitted();
+    maxMemory = heap.getMax() + nonHeap.getMax();
+    long used = 0, max = 0;
+    for (BufferPoolMXBean pool : ManagementFactory.getPlatformMXBeans(BufferPoolMXBean.class)) {
+      if (pool.getMemoryUsed() != -1) used += pool.getMemoryUsed();
+      max += pool.getTotalCapacity();
+    }
+    usedBuffer = used;
+    maxBuffer = max;
+
+    javaCpuLoad = (float)(os.getProcessCpuLoad() * 100);
+    systemCpuLoad = (float)(os.getSystemCpuLoad() * 100);
 
     rooms = ClajVars.relay.rooms.size;
     clients = ClajVars.relay.clientsInRooms();
@@ -96,6 +104,10 @@ public class ClajStateSummary {
     } else {
       uploadTransfert = downloadTransfert = totalTransfertUpload = totalTransfertDownload = -1;
     }
+
+    usedDisk = (long)ClajVars.workingDirectory.findAll().sumf(Fi::length);
+    freeDisk = ClajVars.workingDirectory.file().getFreeSpace();
+    maxDisk = ClajVars.workingDirectory.file().getTotalSpace();
   }
 
   public static ClajStateSummary now() {

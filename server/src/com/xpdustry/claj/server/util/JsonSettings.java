@@ -278,7 +278,7 @@ public class JsonSettings implements Autosaver.Saveable {
 
   @SuppressWarnings("resource")
   public synchronized void saveValues(Fi file) {
-    try {
+    try { //TODO: write first to a temp file?
       if (isPlainJson()) {
         try (Writer writer = new BufferedWriter(file.writer(false), 8192)) {
           builder.reset();

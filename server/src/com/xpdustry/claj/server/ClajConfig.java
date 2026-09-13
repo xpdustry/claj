@@ -123,6 +123,10 @@ public class ClajConfig {
       return "field '" + key + "'";
     }
 
+    public boolean loaded() {
+      return loaded;
+    }
+
     public boolean modified() {
       return modified;
     }
@@ -168,6 +172,11 @@ public class ClajConfig {
     public T get() {
       load();
       return value;
+    }
+
+    /** @return {@link #defaultValue} if not {@link #loaded}, else {@link #value}. */
+    public T getOrDefault() {
+      return loaded ? value : defaultValue;
     }
 
     public void set(T value) {
@@ -281,9 +290,9 @@ public class ClajConfig {
       "Toggle debug log level",
       Strings.format("""
       Write logs of defined level, and above, to files.
-      Possible values, in order, are: @
+      Possible values, in order: &lb@&lw
       Set to &lbdebug&lw to write everything, or &lbnone&lw to write nothing.
-      """, Strings.toSentence(Structs.iterable(LogLevel.values()), LogLevel::name), ", ", " or "),
+      """, Strings.toSentence(Structs.iterable(LogLevel.values()), LogLevel::name, ", ", " or ")),
       "Maximum number of connections (not clients) allowed on this server. Set to &lb0&lw to disable.",
       "Maximum number of rooms that can be created on this server. Set to &lb0&lw to disable.",
       """

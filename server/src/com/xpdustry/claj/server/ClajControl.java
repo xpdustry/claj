@@ -56,8 +56,10 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
           while (scanner.hasNext()) {
             String line = scanner.nextLine();
             Core.app.post(() -> {
-              try { handleCommand(line); }
-              catch (Throwable e) { Log.err(e); }
+              try {
+                ClajVars.logToFile("> " + line); //TODO: log commands too?
+                handleCommand(line);
+              } catch (Throwable e) { Log.err(e); }
             });
           }
         } catch (Throwable e) { Log.err("Server Control", e); }
@@ -124,12 +126,13 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       Log.info("&lk|&fr Main TPS: @" + (sa ? " (@ awaiting)" : ""), state.mainTps,
                sa ? ((ServerApplication)Core.app).waitingTasks() : -1);
       Log.info("&lk|&fr Net TPS: @", state.netTps);
-      Log.info("&lk|&fr Heap: @ / @ (@)", Strings.formatBytes(state.usedHeap), Strings.formatBytes(state.allocatedHeap),
-               Strings.formatBytes(state.maxHeap));
-      Log.info("&lk|&fr Metaspace: @ / @ (@)", Strings.formatBytes(state.usedMeta), Strings.formatBytes(state.allocatedMeta),
-               Strings.formatBytes(state.maxMeta));
+      Log.info("&lk|&fr Memory: @ / @ (@)", Strings.formatBytes(state.usedMemory),
+               Strings.formatBytes(state.allocatedMemory), Strings.formatBytes(state.maxMemory));
+      Log.info("&lk|&fr Buffers: @ / @", Strings.formatBytes(state.usedBuffer), Strings.formatBytes(state.maxBuffer));
       Log.info("&lk|&fr CPU: @ (@)", String.format("%.2f%%", state.javaCpuLoad),
                String.format("%.2f%%", state.systemCpuLoad));
+      Log.info("&lk|&fr Disk: @ / @ (@)", Strings.formatBytes(state.usedDisk), Strings.formatBytes(state.freeDisk),
+               Strings.formatBytes(state.maxDisk));
       Log.info("&lk|&fr Load: @ rooms, @ clients, @ connections.", state.rooms, state.clients, state.connections);
       if (ClajVars.relay.networkSpeed == null) {
         Log.info("&lk|&fr Network speed calculator is disabled.");
@@ -262,7 +265,6 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
       }
     });
 
-    //TODO: add 'all' argument?
     register("refresh", "<room|list> [id|type] [force]", "Refresh a room state or a room list.", args -> {
       switch (args[0]) {
         case "room":
@@ -306,7 +308,8 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
           else if (ClajVars.relay.refreshRoomList(type, force))
             Log.info("Refreshing room list of type @... This can take a moment.", type);
           else
-            Log.info("A refresh is already in progress, please wait a moment. (Use 'force' argument to refresh anyway)");
+            Log.info("A refresh is already in progress, please wait a moment. "
+                   + "(Use 'force' argument to refresh anyway)");
           break;
 
         default:

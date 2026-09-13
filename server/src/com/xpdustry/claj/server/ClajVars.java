@@ -29,7 +29,6 @@ import arc.Files.FileType;
 import arc.files.Fi;
 import arc.net.ArcNet;
 import arc.util.*;
-
 import com.xpdustry.claj.common.status.ClajVersion;
 import com.xpdustry.claj.server.plugin.Plugins;
 
@@ -43,7 +42,7 @@ public class ClajVars {
   public static int port = 7000;
   public static ClajVersion version;
 
-  public static Fi workingDirectory = new Fi("", FileType.local);
+  public static Fi workingDirectory = new Fi(new Fi("", FileType.local).absolutePath());
   public static Fi pluginsDirectory = workingDirectory.child("plugins");
 
   public static Plugins plugins;
@@ -72,7 +71,7 @@ public class ClajVars {
       }
       // Ignore closed channel errors
       if (cause instanceof ClosedChannelException) return;
-      // Summarize buffer over/underflow errors
+      // Summarize buffer over/under flow errors
       if (cause instanceof BufferOverflowException || cause instanceof BufferUnderflowException) {
         Log.err(e.toString() + ": " + cause.toString());
         return;
@@ -87,7 +86,7 @@ public class ClajVars {
       text = Strings.format(logFormat, logDateformat.format(LocalDateTime.now()), tags[level.ordinal()], text);
 
       System.out.println(Log.format(text, empty));
-      if (ClajConfig.writeLogLevel.get().ordinal() > level.ordinal()) return;
+      if (ClajConfig.writeLogLevel.getOrDefault().ordinal() > level.ordinal()) return;
       logToFile(Log.formatColors(text, false, empty));
     };
 
@@ -109,15 +108,19 @@ public class ClajVars {
 
   /** Does not remove ANSI codes. */
   public static void logToFile(String text) {
-    if (currentLogFile != null && currentLogFile.length() > maxLogLength) {
-      currentLogFile.writeString("[End of log file. Date: " + logDateformat.format(LocalDateTime.now()) + "]\n", true);
-      currentLogFile = null;
+    try {
+      if (currentLogFile != null && currentLogFile.length() > maxLogLength) {
+        currentLogFile.writeString("[End of log file. Date: " + logDateformat.format(LocalDateTime.now()) + "]\n", true);
+        currentLogFile = null;
+      }
+      if (currentLogFile == null) {
+        int i = 0;
+        while (logFolder.child("log-" + i + ".txt").length() >= maxLogLength) i++;
+        currentLogFile = logFolder.child("log-" + i + ".txt");
+      }
+      currentLogFile.writeString(text + "\n", true);
+    } catch (Throwable e) {
+      System.err.println("Unable to write message to '" + currentLogFile + "': " + e.toString());
     }
-    if (currentLogFile == null) {
-      int i = 0;
-      while (logFolder.child("log-" + i + ".txt").length() >= maxLogLength) i++;
-      currentLogFile = logFolder.child("log-" + i + ".txt");
-    }
-    currentLogFile.writeString(text + "\n", true);
   }
 }

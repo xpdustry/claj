@@ -95,7 +95,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       Selector selector = Reflect.get(Server.class, this, "selector");
       Reflect.set(Server.class, this, "selector", NioUtils.newOptimizedSelector());
       selector.close();
-      Log.info("&gSelector optimized successfully.");
+      Log.info("&gSelector successfully optimized.");
     } catch (Exception e) {
       Log.warn("Unable to optimize selector: @. Skipping...",
               (e instanceof RuntimeException ? e.getCause() : e).toString());
