@@ -41,18 +41,25 @@ public class ClajConnection {
   /** hex version of {@link #id}. */
   public final String sid;
   public final Ratekeeper packetRate;
+  /** Whether the connection has already been removed from the rate-limit. */
+  protected boolean uncounted;
 
   protected volatile ClajRoom room;
 
   public ClajConnection(Connection connection) {
+    this(connection, AddressUtil.get(connection), AddressUtil.getString(connection),
+         AddressUtil.encodeId(connection));
+  }
+
+  protected ClajConnection(Connection connection, InetAddress address, String saddress, String sid) {
     if (connection == null) throw new NullPointerException("connection is null");
-    this.connection = connection;
-    address = AddressUtil.get(connection);
     if (address == null) throw new IllegalArgumentException("no address found for this connection");
-    saddress = AddressUtil.getString(connection);
-    id = connection.getID();
-    sid = AddressUtil.encodeId(connection);
-    packetRate = new Ratekeeper();
+    this.connection = connection;
+    this.address = address;
+    this.saddress = saddress;
+    this.id = connection.getID();
+    this.sid = sid;
+    this.packetRate = new Ratekeeper();
   }
 
   /** The room where the connection is right now. */

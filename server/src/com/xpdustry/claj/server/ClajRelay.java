@@ -22,11 +22,12 @@ package com.xpdustry.claj.server;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.BindException;
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.Selector;
+import java.security.SecureRandom;
 import arc.*;
-import arc.math.Mathf;
 import arc.net.*;
 import arc.struct.*;
 import arc.util.*;
@@ -67,6 +68,13 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   public volatile boolean beQuiet;
   /** Total number of clients in rooms. */
   protected int clientsInRooms;
+  /** Use a non-predictable random for room ids. */
+  protected final SecureRandom random = new SecureRandom();
+  /**
+   * Number of accepted connections per address. <br>
+   * Must be synchronized, as a connection can be closed from the network or the main thread.
+   */
+  protected final ObjectIntMap<InetAddress> addressConnections = new ObjectIntMap<>();
 
   // Caches
   /** As server version will not change at runtime, cache the serialized packet to avoid re-serialization. */
@@ -204,7 +212,8 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   public boolean allowConnected(Connection connection) {
     if (connection == null || toClajCon(connection) != null) return false;
     String id = AddressUtil.encodeId(connection);
-    String ip = AddressUtil.getString(connection);
+    InetAddress address = AddressUtil.get(connection);
+    String ip = address == null ? null : address.getHostAddress();
     connection.setName("Connection " + id); // fix id format in stacktraces
 
     if (isClosed() || ip == null || ClajConfig.blacklist.contains(ip)) {
@@ -212,15 +221,39 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       warn("Connection @ (@) rejected " +
            (isClosed() ? "because of a closed server." : "for a blacklisted address."), id, ip);
       return false;
-    } else if (ClajConfig.maxConnections.get() > 0 && connections.size >= ClajConfig.maxConnections.get()) {
+    }
+    int max = ClajConfig.maxConnections.get();
+    if (max > 0 && connections.size >= max) { // Not exact but it's enough
       connection.close(DcReason.closed);
       warn("Connection @ (@) rejected because the server is full.", id, ip);
       return false;
     }
 
+    int limit = ClajConfig.connectionLimit.get();
+    boolean tooMany;
+    synchronized (addressConnections) {
+      // Always counted, in case of the limit is enabled at runtime
+      tooMany = addressConnections.increment(address, 0, 1) >= limit && limit > 0;
+      // The other connections are still counted
+      if (tooMany) addressConnections.increment(address, 0, -1);
+    }
+    if (tooMany) {
+      connection.close(DcReason.closed);
+      warn("Connection @ (@) rejected because the address has too many connections.", id, ip);
+      return false;
+    }
+
     Log.debug("Connection @ (@) received.", id, ip);
-    connection.setArbitraryData(new ClajConnection(connection));
+    connection.setArbitraryData(new ClajConnection(connection, address, ip, id));
     return true;
+  }
+
+  protected void uncount(ClajConnection con) {
+    synchronized (addressConnections) {
+      if (con.uncounted) return; // Can be called twice
+      con.uncounted = true;
+      if (addressConnections.increment(con.address, 0, -1) <= 1) addressConnections.remove(con.address, 0);
+    }
   }
 
   /** Weird name =/. Called from network thread. */
@@ -233,6 +266,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     String ip = valid ? con.saddress : AddressUtil.getString(connection);
     Log.debug("Connection @ (@) lost: @.", id, ip, reason);
 
+    if (valid) uncount(con);
     // Reset streams if needed
     if (StreamReceiver.has(connection)) StreamReceiver.reset(connection);
     // Avoid searching for a room if it was an invalid connection or just a ping
@@ -318,11 +352,6 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       warn("Connection @ tried to create a room but his implementation is blacklisted. (was: @)",
            connection.sid, type);
       return CloseReason.blacklisted;
-
-    } else if (!routines.getAddressRate(connection).allowCreate()) {
-      rejectRoomCreation(connection, CloseReason.serverFull); // act as server full
-      warn("Connection @ tried to create a room but reached the limit per IP.", connection.sid);
-      return CloseReason.closed;
     }
 
     ClajRoom room = connection.currentRoom();
@@ -331,6 +360,12 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       denyAction(connection, room, MessageType.alreadyHosting);
       warn("Connection @ tried to create a room but is already hosting the room @.", connection.sid, room.sid);
       return CloseReason.error;
+
+    // Must be checked last, as the room is counted if allowed
+    } else if (!routines.getAddressRate(connection).allowCreate()) {
+      rejectRoomCreation(connection, CloseReason.serverFull); // act as server full
+      warn("Connection @ tried to create a room but reached the limit per IP.", connection.sid);
+      return CloseReason.closed;
     }
 
     room = createRoom(connection, type);
@@ -413,7 +448,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       if (isRequest) rejectRoomJoin(connection, room, RejectReason.passwordRequired);
       else connection.close(DcReason.error);
       warn("Connection @ tried to join the room @ but a password is needed.", connection.sid, room.sid);
-      return RejectReason.incompatible;
+      return RejectReason.passwordRequired;
 
     } else if (room.isProtected && room.password != password) {
       if (isRequest) rejectRoomJoin(connection, room, RejectReason.invalidPassword);
@@ -783,7 +818,8 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       }
     }
 
-    routines.getAddressRate(room.host).removeRoom();
+    ClajRoutines.AddressRater rater = routines.rates.get(room.host.address);
+    if (rater != null) rater.removeRoom();
     setRoomAfk(room, false);
     Seq<ClajConnection> cons = routines.getPendingRoomRequestsForSend(room);
     if (cons != null) cons.each(c -> rejectRoomInfo(c, room, false));
@@ -897,7 +933,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
    * @return the state value. (0: refreshing, 1: up to date, 2: updating, 3: pending request limit, 4: type not found)
    */
   public int requestRoomList(ClajConnection con, ClajType type) {
-    return routines.requestRoomList(con, type, rooms, r -> rejectRoomList(con, type, r));
+    return routines.requestRoomList(con, type, type == null ? null : types.get(type), r -> rejectRoomList(con, type, r));
   }
 
   public boolean sendRoomList(ClajType type) { return sendRoomList(type, false); }
@@ -917,7 +953,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
 
   public void denyAction(ClajConnection con, ClajRoom room, MessageType type) {
     if (con == null || room == null) return;
-    room.message(type);
+    if (room.isHost(con)) room.message(type);
     Events.fire(new ActionDeniedEvent(con, room, type));
   }
 
@@ -943,7 +979,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     if (con == null) return true;
     ClajRoom room = con.currentRoom();
     boolean isHost = room != null && room.isHost(con);
-    int limit = isHost ? ClajConfig.hostSpamLimit.get() * room.clients() : ClajConfig.spamLimit.get();
+    int limit = isHost ? ClajConfig.hostSpamLimit.get() * (room.clients()+1) : ClajConfig.spamLimit.get();
     boolean isRated = limit > 0 && !con.packetRate.allow(3000L, limit);
     if (isRated) {
       if (isHost) rejectRateLimitedHost(room);
@@ -1033,7 +1069,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   public long newRoomId() {
     long id;
     /* re-roll if 0 because it's used to specify an uncreated room. */
-    do { id = Mathf.rand.nextLong(); }
+    do { id = random.nextLong(); }
     while (id == ClajRoom.UNCREATED_ROOM || rooms.containsKey(id));
     return id;
   }
