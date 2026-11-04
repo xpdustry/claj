@@ -456,7 +456,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       warn("Connection @ tried to join the room @ but used the wrong password.", connection.sid, room.sid);
       return RejectReason.invalidPassword;
 
-    } else if (room.maxClients > 0 && room.clients() >= room.maxClients) {
+    } else if (room.isFull()) {
       if (isRequest) rejectRoomJoin(connection, room, RejectReason.roomFull);
       else connection.close(DcReason.error);
       warn("Connection @ tried to join the room @ but it is full.", connection.sid, room.sid);
@@ -976,7 +976,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
    * @return whether the packet is allowed or not. If not, the client will be kicked and the room warned.
    */
   public boolean checkRateLimit(ClajConnection con) {
-    if (con == null) return true;
+    if (con == null || !con.isConnected()) return true;
     ClajRoom room = con.currentRoom();
     boolean isHost = room != null && room.isHost(con);
     int limit = isHost ? ClajConfig.hostSpamLimit.get() * (room.clients()+1) : ClajConfig.spamLimit.get();

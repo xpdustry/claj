@@ -125,7 +125,8 @@ public class ClajRoom implements NetListener {
 
   /** Alerts the host of the client arrival. */
   public void connected(ClajConnection connection) {
-    if (closed || connection == null || containsClient(connection)) return;
+    if (closed || connection == null || !connection.isConnected() ||
+        containsClient(connection)) return;
     if (!host.isConnected()) {
       close();
       return;
@@ -147,7 +148,7 @@ public class ClajRoom implements NetListener {
 
   /** Alerts the host that a client disconnected. This doesn't close the connection. */
   public void disconnected(ClajConnection connection, DcReason reason) {
-    if (closed || connection == null) return;
+    if (closed || connection == null/* || !connection.isConnected()*/) return;
 
     if (isHost(connection) || !host.isConnected()) {
       Events.fire(new ConnectionLeftEvent(connection, this));
@@ -171,7 +172,7 @@ public class ClajRoom implements NetListener {
 
   /** Doesn't notify the room host about a disconnected client, but this does close it. */
   public void disconnectedQuietly(ClajConnection connection, DcReason reason) {
-    if (closed || connection == null) return;
+    if (closed || connection == null/* || !connection.isConnected()*/) return;
 
     if (isHost(connection) || !host.isConnected()) {
       Events.fire(new ConnectionLeftEvent(connection, this));
@@ -287,7 +288,7 @@ public class ClajRoom implements NetListener {
   @Override
   public void idle(Connection connection) {
     if (closed || connection == null || !host.isConnected() || isHost(connection) ||
-        !containsClient(connection)) return;
+        !connection.isConnected() || !containsClient(connection)) return;
     sendIdle(host, connection.getID());
   }
 
@@ -307,6 +308,12 @@ public class ClajRoom implements NetListener {
   /** @return whether this room have clients or not. */
   public boolean isEmpty() {
     return clientsMap.isEmpty();
+  }
+
+  /** @return whether the room reached the server limit or its own. */
+  public boolean isFull() {
+    int cap = ClajConfig.clientLimit.get(), n = clients();
+    return cap > 0 && n >= cap || maxClients > 0 && n >= maxClients;
   }
 
   /** @return the number of CLaJ clients in this room. */
@@ -397,8 +404,7 @@ public class ClajRoom implements NetListener {
     this.isProtected = isProtected;
     this.password = password;
     this.canRequestState = requestState;
-    int limit = ClajConfig.clientLimit.get();
-    this.maxClients = limit > 0 ? Mathf.clamp(maxClients, 0, limit) : maxClients;
+    this.maxClients = maxClients;
 
     Events.fire(new ConfigurationChangedEvent(this));
   }

@@ -77,7 +77,7 @@ public class ClajPinger extends Client {
   protected Cons<ByteBuffer> joinSuccess;
   protected Cons<RejectReason> joinDenied;
   protected Cons<Exception> joinFailed;
-  protected RoomJoinRequestPacket lastRequest;
+  protected ByteBuffer lastRequest;
   protected volatile long requestedRoom = ClajProxy.UNCREATED_ROOM;
   protected volatile boolean joining;
 
@@ -306,7 +306,7 @@ public class ClajPinger extends Client {
   }
 
   protected void runJoinSuccess() {
-    if (joinSuccess != null) postTask(joinSuccess, makeJoinPacket(lastRequest));
+    if (joinSuccess != null) postTask(joinSuccess, lastRequest);
     resetJoinState(null, null, null);
     close();
   }
@@ -475,17 +475,11 @@ public class ClajPinger extends Client {
     p.withPassword = withPassword && password != NO_PASSWORD;
     p.password = password;
     p.type = provider.getType();
-    lastRequest = p;
+    ByteBuffer buff = ByteBuffer.allocate(2 + RoomJoinRequestPacket.SIZE); // claj id + packet id + packet
+    getSerialization().write(buff, p.toJoinPacket());
+    lastRequest = (ByteBuffer)buff.flip();
     sendTCP(p);
   }
-
-  protected ByteBuffer makeJoinPacket(RoomJoinRequestPacket request) {
-    if (request == null) return null;
-    ByteBuffer buff = ByteBuffer.allocate(2 + RoomJoinRequestPacket.SIZE); // claj id + packet id + packet
-    getSerialization().write(buff, request.toJoinPacket());
-    return (ByteBuffer)buff.flip();
-  }
-
 
   /** Modified serializer that reads only one packet type in {@linkplain ClajPinger#pinging pinging} mode. */
   protected static class Serializer extends ClajClientSerializer {

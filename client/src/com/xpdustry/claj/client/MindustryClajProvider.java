@@ -140,7 +140,7 @@ public class MindustryClajProvider implements ClajProvider {
 
   @Override
   public ByteBuffer writeRoomState(ClajProxy proxy) {
-    //thread-safe to do that?
+    //really safe to do that?
     return (ByteBuffer)NetworkIO.writeServerData().flip();
   }
 
@@ -190,8 +190,9 @@ public class MindustryClajProvider implements ClajProvider {
       Core.bundle.get("claj.message." + Strings.camelToKebab(message.name())));
 
     if (message != MessageType.serverClosing) return;
+    long roomId = proxy.roomId();
     Timer.schedule(() -> {
-      if (!proxy.roomCreated()) return;
+      if (!proxy.roomCreated() || proxy.roomId() != roomId) return;
       proxy.closeRoom(CloseReason.serverClosed);
     }, 5);
   }

@@ -48,15 +48,19 @@ public class ClajNet {
   /**
    * Registers a new packet type for serialization. Ignores if already registered.
    * @throws IllegalArgumentException if no id is available for this packet. ({@code 256} packets max)
+   * @return the packet id
    */
-  public static <T extends Packet> void register(Prov<T> cons) {
+  public static <T extends Packet> byte register(Prov<T> cons) {
     Class<?> type = cons.get().getClass();
-    if (packetIds.containsKey(type)) return;
-    if (packets.size >= MAX_PACKETS) throw new IllegalArgumentException("Packets limit reached");
-    packetIds.put(type, packets.size);
+    int id = packetIds.get(type, -1);
+    if (id != -1) return (byte)id;
+    id = packets.size;
+    if (id >= MAX_PACKETS) throw new IllegalArgumentException("Packets limit reached");
+    packetIds.put(type, id);
     packets.add(cons);
     packetLocals.add((ThreadLocal<?>)null);
     packetPools.add((Pool<?>)null);
+    return (byte)id;
   }
 
   protected static int getIndex(Class<? extends Packet> packet) {

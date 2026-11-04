@@ -66,7 +66,7 @@ public class ServerApplication implements Application {
       runnables.run();
       graphics.incrementFrameId();
       //defaultUpdate();
-      //listeners.each(ApplicationListener::update); // This can be too much overhead at high load
+      listeners.each(ApplicationListener::update);
       graphics.updateTime();
     }
 

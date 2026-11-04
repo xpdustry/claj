@@ -384,7 +384,8 @@ public abstract class ProxyClient extends Client {
     // Heuristic: just check for enough space assuming packets are not so big.
     // For future, override directly TcpConnection#send, to make waiting at buffer
     // overflow and retry each socket writes.
-    if (getTcpWriteBufferSize() <= writeBufferThreshold) return super.sendTCP(object);
+    if (getTcpWriteBufferSize() <= writeBufferThreshold || Thread.currentThread() == getUpdateThread())
+      return super.sendTCP(object);
     synchronized (waitLock) {
       waitingForWrite = true;
       int waits = 20;

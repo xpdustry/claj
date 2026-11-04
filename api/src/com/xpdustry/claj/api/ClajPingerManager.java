@@ -164,7 +164,7 @@ public class ClajPingerManager {
     //FIXME: not sure of that =/
     while (!queue.isEmpty()) {
       Cons2<ClajPinger, Runnable> task = queue.removeFirst();
-      try { provider.postConnect(() -> task.get(get(), () -> {})); }
+      try { task.get(get(), () -> {}); }
       catch (Exception _) {}
     }
 
