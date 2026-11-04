@@ -104,9 +104,7 @@ public class ServerApplication implements Application {
 
   @Override
   public void post(Runnable runnable) {
-    boolean wasEmpty = runnables.size() == 0;
-    runnables.post(runnable);
-    if (!wasEmpty) return;
+    if (!runnables.post(runnable)) return;
     synchronized (runnables) {
       runnables.notify();
     }

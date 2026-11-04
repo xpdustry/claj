@@ -32,15 +32,16 @@ public class TaskQueue{
         consumer = first;
     }
 
-    public void post(Runnable task){
+    /** @return whether the queue was empty. */
+    public boolean post(Runnable task){
         for(;;){
             Chunk chunk = producer.get();
             int offset = chunk.claim.getAndIncrement();
             if(offset < CHUNK){
                 // Counted before publish, so size stays >= 0
-                size.incrementAndGet();
+                boolean wasEmpty = size.getAndIncrement() == 0;
                 chunk.slots.set(offset, task);
-                return;
+                return wasEmpty;
             }
 
             // Chunk full: link/advance, then retry

@@ -477,7 +477,8 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       connection.clearQueue();
       if (isRequest) rejectRoomJoin(connection, room, RejectReason.error);
       else connection.close(DcReason.error);
-      Log.err("Failed to add connection @ to room @. The room has been closed.", connection.sid, room.sid);
+      if (room.isClosed()) Log.err("Failed to add connection @ to room @. The room has been closed.",
+                                   connection.sid, room.sid);
       return RejectReason.error;
     }
   }
@@ -847,14 +848,15 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   public boolean addClient(ClajRoom room, ClajConnection con) {
     if (con == null || room == null) return false;
     int clients = room.clients(); // because all clients will be kicked before cleaning cache
-    room.connected(con);
-    if (room.isClosed()) {
+    if (room.connected(con)) {
+      clientsInRooms++;
+      setRoomAfk(room, false);
+      return true;
+    } else if (room.isClosed()) {
       clientsInRooms -= clients;
       closeRoom(room);
-      return false;
-    } else clientsInRooms++;
-    setRoomAfk(room, false);
-    return true;
+    }
+    return false;
   }
 
   public boolean removeClient(ClajConnection con) { return removeClient(con, DcReason.closed); }

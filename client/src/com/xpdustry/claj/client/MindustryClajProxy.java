@@ -61,14 +61,15 @@ public class MindustryClajProxy extends ClajProxy {
 
   public Iterable<NetConnection> getMindustryConnections() {
     return () -> new Iterator<>() {
-      final Iterator<VirtualConnection> it = getConnections().iterator();
+      final VirtualConnection[] cons = getConnections();
+      int i;
       NetConnection next;
 
       @Override
       public boolean hasNext() {
         if (next != null) return true;
-        while (it.hasNext()) {
-          next = toMindustryConnection(it.next());
+        while (i < cons.length) {
+          next = toMindustryConnection(cons[i++]);
           if (next != null) return true;
         }
         return false;

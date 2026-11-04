@@ -26,11 +26,11 @@ import java.nio.channels.ClosedSelectorException;
 import arc.func.Cons;
 import arc.net.*;
 import arc.struct.*;
-import arc.util.Structs;
 
 import com.xpdustry.claj.common.ClajPackets.Disconnect;
 import com.xpdustry.claj.common.net.ClientReceiver;
 import com.xpdustry.claj.common.net.NetListenerFilter;
+import com.xpdustry.claj.common.util.Structs;
 
 
 /**
@@ -52,10 +52,10 @@ public abstract class ProxyClient extends Client {
   protected int connectTcpPort;
   protected int connectUdpPort;
 
-  protected final IntMap<VirtualConnection> connectionsMap = new IntMap<>(16);
-  protected final Seq<VirtualConnection> connections = new Seq<>(false);
-  /** Used by {@link #close(VirtualConnection, DcReason)} to thread-safely remove a connection. */
-  private volatile VirtualConnection[] stales = null;
+  // Use COW lists for safety
+  protected volatile IntMap<VirtualConnection> connectionsMap = new IntMap<>(16);
+  protected volatile VirtualConnection[] connections = new VirtualConnection[0];
+  private final Object connectionsLock = new Object();
 
   protected NetListener conListener;
   protected volatile boolean shutdown = true, starting, connecting, closing;
@@ -120,7 +120,6 @@ public abstract class ProxyClient extends Client {
 
   @Override
   public void update(int timeout) throws IOException {
-    clearStales();
     updatePing();
     super.update(timeout);
     updateIdle();
@@ -135,10 +134,10 @@ public abstract class ProxyClient extends Client {
 
   /** Tries to mimic connection idling. */
   public void updateIdle() {
-    for (VirtualConnection c : getConnections()) {
+    eachConnections(c -> {
       c.updateIdle();
       if (c.isIdle()) c.notifyIdle0();
-    }
+    });
   }
 
   public void updatePing() {
@@ -207,64 +206,60 @@ public abstract class ProxyClient extends Client {
       c.resetIdle();
       if (!broadcastSupported) close(c.getID(), reason);
     });
-    if (connections.any() && broadcastSupported) send(makeBroadcastClosePacket(reason));
+    if (getConnectionsSize() > 0 && broadcastSupported) send(makeBroadcastClosePacket(reason));
     clearConnections();
-    stales = null;
-  }
-
-  private void addStale(VirtualConnection con) {
-    if (con == null) return;
-    VirtualConnection[] stales = this.stales;
-    this.stales = stales == null ? new VirtualConnection[] {con} : Structs.add(stales, con);
-  }
-
-  private void clearStales() {
-    VirtualConnection[] stales = this.stales;
-    this.stales = null;
-    if (stales == null) return;
-    Structs.each(this::removeConnection, stales);
-  }
-
-  private boolean isStale(VirtualConnection con) {
-    if (con == null) return false;
-    VirtualConnection[] stales = this.stales;
-    return stales != null && Structs.contains(stales, con::equals);
   }
 
   protected void addConnection(VirtualConnection con) {
-    connectionsMap.put(con.getID(), con);
-    connections.add(con);
+    synchronized (connectionsLock) {
+      if (connectionsMap.containsKey(con.getID())) return;
+      IntMap<VirtualConnection> map = new IntMap<>(connectionsMap);
+      map.put(con.getID(), con);
+      connectionsMap = map;
+      connections = Structs.add(connections, con);
+    }
   }
 
   protected void removeConnection(VirtualConnection con) {
-    connectionsMap.remove(con.getID());
-    connections.remove(con);
+    synchronized (connectionsLock) {
+      if (!connectionsMap.containsKey(con.getID())) return;
+      IntMap<VirtualConnection> map = new IntMap<>(connectionsMap);
+      map.remove(con.getID());
+      connectionsMap = map;
+      connections = Structs.remove(connections, con);
+    }
   }
 
   protected void clearConnections() {
-    connectionsMap.clear();
-    connections.clear();
+    synchronized (connectionsLock) {
+      connectionsMap = new IntMap<>(16);
+      connections = new VirtualConnection[0];
+    }
   }
 
+  /** Can be called from any thread. */
   public VirtualConnection getConnection(int id) {
     return connectionsMap.get(id);
   }
 
-  /** @return whether the connection is from this proxy. */
+  /** @return whether the connection is from this proxy and still connected. */
   public boolean hasConnection(Connection con) {
-    return con != null && connectionsMap.get(con.getID()) == con;
+    // Use reverse path to avoid locking the map
+    return con instanceof VirtualConnection v && v.proxy == this && v.isConnected();
+    //return con != null && connectionsMap.get(con.getID()) == con;
   }
 
-  public Iterable<VirtualConnection> getConnections() {
+  /** @return the internal connection array. Must not be modified! */
+  public VirtualConnection[] getConnections() {
     return connections;
   }
 
   public int getConnectionsSize() {
-    return connections.size;
+    return connections.length;
   }
 
   public void eachConnections(Cons<VirtualConnection> consumer) {
-    connections.each(consumer);
+    Structs.each(consumer, connections);
   }
 
 
@@ -278,9 +273,12 @@ public abstract class ProxyClient extends Client {
    */
   public int broadcast(Object object, boolean tcp) {
     if (object == null) throw new IllegalArgumentException("object cannot be null.");
-    if (connections.isEmpty()) return 0; // no need to broadcast is there is no clients
-    if (!broadcastSupported) return connections.sum(c -> send(c, object, tcp));
-    return broadcastImpl(object, tcp);
+    VirtualConnection[] cons = connections;
+    if (cons.length == 0) return 0; // no need to broadcast if there is no clients
+    if (broadcastSupported) return broadcastImpl(object, tcp);
+    int written = 0;
+    for (VirtualConnection c : cons) written += send(c, object, tcp);
+    return written;
   }
 
   /** Doesn't checks for availability. */
@@ -327,7 +325,7 @@ public abstract class ProxyClient extends Client {
 
   /** Close connection without notify the server. */
   public void closeQuietly(VirtualConnection con, DcReason reason) {
-    addStale(con);
+    removeConnection(con); // removed first, so the next packets for it are ignored
     boolean wasConnected = con.isConnected();
     con.setConnected0(false);
     if(wasConnected) con.notifyDisconnected0(reason);
@@ -338,7 +336,6 @@ public abstract class ProxyClient extends Client {
   protected VirtualConnection conConnected(int conId, long addressHash) {
     VirtualConnection con = getConnection(conId);
     if (con == null) {
-      clearStales(); // Clear stale connections now to avoid a duplicate
       con = new VirtualConnection(this, getSerialization(), conId, addressHash);
       if (conListener != null) con.addListener(conListener);
       addConnection(con);
@@ -347,23 +344,21 @@ public abstract class ProxyClient extends Client {
     return con;
   }
 
+  /** Closed connections are removed immediately, so they are ignored here. */
   protected VirtualConnection conDisconnected(int conId, DcReason reason) {
     VirtualConnection con = getConnection(conId);
-    if (isStale(con)) return null;
     if (con != null) closeQuietly(con, reason);
     return con;
   }
 
   protected VirtualConnection conReceived(int conId, Object object) {
     VirtualConnection con = getConnection(conId);
-    if (isStale(con)) return null;
     if (con != null) con.notifyReceived0(object);
     return con;
   }
 
   protected VirtualConnection conIdle(int conId) {
     VirtualConnection con = getConnection(conId);
-    if (isStale(con)) return null;
     if (con != null) con.notifyIdle0();
     return con;
   }

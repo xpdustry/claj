@@ -140,7 +140,7 @@ public class MindustryClajProvider implements ClajProvider {
 
   @Override
   public ByteBuffer writeRoomState(ClajProxy proxy) {
-    //really safe to do that?
+    // Not thread-safe, but in theory it doesn't matter.
     return (ByteBuffer)NetworkIO.writeServerData().flip();
   }
 

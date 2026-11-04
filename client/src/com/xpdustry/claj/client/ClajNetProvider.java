@@ -44,14 +44,14 @@ public class ClajNetProvider implements NetProvider {
   public final Client client;
   public final Server server;
 
-  public ClajNetProvider(NetProvider provider, Client client, Server server) {
-    this.provider = provider;
-    this.client = client;
-    this.server = server;
+  public ClajNetProvider(NetProvider parentProvider, Client parentClient, Server parentServer) {
+    provider = parentProvider;
+    client = parentClient;
+    server = parentServer;
   }
 
   public MindustryClajProxy getProxy() {
-    ClajProxy proxy = Claj.get().proxies.get(); // Mindustry implementation only uses the first proxy
+    ClajProxy proxy = Claj.get().proxies.get(); // Mindustry implementation only use the first proxy
     return proxy.roomCreated() && proxy instanceof MindustryClajProxy mproxy ? mproxy : null;
   }
 
@@ -64,7 +64,7 @@ public class ClajNetProvider implements NetProvider {
         else provider.sendExceptServer(except, object, reliable);
       } else {
         if (except == null) provider.sendAllServer(object, connections, reliable);
-        // No dedicated method for this path, but it is never used anyways....
+        // No dedicated method for this path, but it is never used anyways...
         else for (NetConnection con : connections) {
           if (con != except) con.send(object, reliable);
         }

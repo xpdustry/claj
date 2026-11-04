@@ -20,12 +20,14 @@
 package com.xpdustry.claj.server;
 
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import arc.func.Cons;
 import arc.func.Cons2;
 import arc.struct.*;
 import arc.util.*;
 
 import com.xpdustry.claj.common.net.stream.PreparedStream;
+import com.xpdustry.claj.common.net.stream.StreamHead;
 import com.xpdustry.claj.common.net.stream.StreamSender;
 import com.xpdustry.claj.common.packets.RoomListPacket;
 import com.xpdustry.claj.common.status.ClajType;
@@ -54,6 +56,7 @@ public class ClajRoutines {
     pendingInfoTasks.clear();
     listCache.each((_, c) -> c.send());
     listCache.clear();
+    rates.each((_, r) -> r.cancelClean());
     rates.clear();
     afk.eachValue(Timer.Task::cancel);
     afk.clear();
@@ -91,8 +94,7 @@ public class ClajRoutines {
     int life = ClajConfig.afkTime.get();
     if (life <= 0) return;
     Timer.Task old = afk.put(room.id, Timer.schedule(() -> {
-      afk.remove(room.id);
-      afkClose.run();
+      if (afk.remove(room.id) != null) afkClose.run();
     }, life * 60));
     if (old != null) old.cancel(); // should not happen, but in case of
   }
@@ -111,8 +113,7 @@ public class ClajRoutines {
     Timer.Task old;
     if (timeout > 0) {
       old = pendingInfoTasks.put(room.id, Timer.schedule(() -> {
-        cancelRoomInfoTask(room);
-        sendState.get(room);
+        if (pendingInfoTasks.remove(room.id) != null) sendState.get(room);
       }, timeout));
       if (old != null) old.cancel(); // In case of
 
@@ -156,7 +157,7 @@ public class ClajRoutines {
       cache.pending.add(con);
       return 2;
     } else if (!cache.isOutdated()) {
-      con.sendStream(cache.packet);
+      con.sendStream(cache.prepare());
       return 1;
     } else {
       cache.pending.add(con);
@@ -222,7 +223,7 @@ public class ClajRoutines {
     }
 
     public void set(ClajRoom room, boolean stateChanged) {
-      if (!room.isPublic) {
+      if (!room.shouldRequestState()) {
         remove(room.id);
         return;
       }
@@ -249,6 +250,7 @@ public class ClajRoutines {
         return;
       }
       refreshTask = Timer.schedule(() -> {
+        if (refreshTask == null) return; // Cancelled after being posted
         refreshTask = null;
         done.run();
       }, timeout);
@@ -264,12 +266,45 @@ public class ClajRoutines {
       if (pending.isEmpty()) return;
       Log.debug("Sending room list of type @ to @ pending request" + (pending.size > 1 ? "s..." : "..."),
                 type, pending.size);
-      if (streamDirty || cachedStream == null) {
-        cachedStream = StreamSender.prepare(packet);
-        streamDirty = false;
-      }
-      pending.each(c -> c.sendStream(cachedStream));
+      PreparedStream stream = prepare();
+      pending.each(c -> c.sendStream(stream));
       pending.clear();
+    }
+
+    //TODO: find another way
+    /** Serializes the list if it changed. The list will be truncated if it's too big for a stream. */
+    public PreparedStream prepare() {
+      if (!streamDirty && cachedStream != null) return cachedStream;
+
+      RoomListPacket list = packet;
+      if (sizeOf(packet) > StreamHead.MAX_STREAM_SIZE) {
+        list = new RoomListPacket();
+        int size = Integer.BYTES;
+        for (LongMap.Entry<ByteBuffer> e : packet.states) {
+          size += entrySize(e.value);
+          if (size > StreamHead.MAX_STREAM_SIZE) break;
+          list.states.put(e.key, e.value);
+          if (packet.protectedRooms.contains(e.key)) list.protectedRooms.add(e.key);
+        }
+        Log.warn("Room list of type @ is too big, truncated to @ of @ rooms.", type, list.states.size,
+                 packet.states.size);
+      }
+
+      cachedStream = StreamSender.prepare(list);
+      streamDirty = false;
+      return cachedStream;
+    }
+
+    /** @see RoomListPacket#write(arc.util.io.ByteBufferOutput) */
+    private static int sizeOf(RoomListPacket packet) {
+      int size = Integer.BYTES;
+      for (ByteBuffer state : packet.states.values()) size += entrySize(state);
+      return size;
+    }
+
+    /** @see RoomListPacket#write(arc.util.io.ByteBufferOutput) */
+    private static int entrySize(ByteBuffer state) {
+      return Long.BYTES + 1 + Character.BYTES + (state == null ? 0 : state.remaining());
     }
 
     public boolean isOutdated() {
@@ -311,7 +346,7 @@ public class ClajRoutines {
 
     public AddressRater add(ClajConnection con) {
       connections.add(con.id);
-      if (clean != null) clean.cancel();
+      cancelClean();
       return this;
     }
 
@@ -319,13 +354,20 @@ public class ClajRoutines {
       connections.remove(con.id);
       if (!connections.isEmpty()) return;
 
-      if (clean != null) clean.cancel();
+      cancelClean();
       int life = ClajConfig.raterLifetime.get();
       if (life <= 0) return;
       clean = Timer.schedule(() -> {
+        if (clean == null) return; // Cancelled after being posted
         clean = null;
         rates.remove(address);
       }, life);
+    }
+
+    public void cancelClean() {
+      if (clean == null) return;
+      clean.cancel();
+      clean = null;
     }
 
     public boolean allowJoin() {

@@ -123,13 +123,16 @@ public class ClajRoom implements NetListener {
     if (con != null) connected(con);
   }
 
-  /** Alerts the host of the client arrival. */
-  public void connected(ClajConnection connection) {
+  /**
+   * Alerts the host of the client arrival.
+   * @return whether the client has been added. If not, the room may have been closed.
+   */
+  public boolean connected(ClajConnection connection) {
     if (closed || connection == null || !connection.isConnected() ||
-        containsClient(connection)) return;
+        containsClient(connection)) return false;
     if (!host.isConnected()) {
       close();
-      return;
+      return false;
     }
 
     sendConnectionJoined(host, connection);
@@ -137,6 +140,7 @@ public class ClajRoom implements NetListener {
     clients.add(connection);
     setRoom(connection);
     Events.fire(new ConnectionJoinedEvent(connection, this));
+    return true;
   }
 
   /** Alerts the host that a client disconnected. This doesn't close the connection. */
