@@ -28,8 +28,8 @@ import com.xpdustry.claj.common.status.ClajType;
  * But no reply are sent, so no reason know what was wrong, if the provided values are invalid.
  */
 public class RoomJoinRequestPacket extends RoomJoinPacket {
-  /** Max packet size: roomId + withPassword + password + type */
-  public static final int SIZE = Long.BYTES + 1 + Short.BYTES + ClajType.SIZE;
+  /** Max packet size, without claj and packet ids: roomId + withPassword + password + type length + type */
+  public static final int SIZE = Long.BYTES + 1 + Short.BYTES + 1 + ClajType.MAX_SIZE;
 
   public RoomJoinPacket toJoinPacket() {
     RoomJoinPacket p = new RoomJoinPacket();

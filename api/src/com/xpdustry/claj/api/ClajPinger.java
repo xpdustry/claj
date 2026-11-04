@@ -481,7 +481,7 @@ public class ClajPinger extends Client {
 
   protected ByteBuffer makeJoinPacket(RoomJoinRequestPacket request) {
     if (request == null) return null;
-    ByteBuffer buff = ByteBuffer.allocate(RoomJoinRequestPacket.SIZE);
+    ByteBuffer buff = ByteBuffer.allocate(2 + RoomJoinRequestPacket.SIZE); // claj id + packet id + packet
     getSerialization().write(buff, request.toJoinPacket());
     return (ByteBuffer)buff.flip();
   }

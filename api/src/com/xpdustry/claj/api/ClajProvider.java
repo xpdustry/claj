@@ -79,7 +79,7 @@ public interface ClajProvider {
    * The actual room state, in an encoded form. (must be flipped for send) <br>
    * Will be requested by the server if needed. {@code null} can be returned to not provide state.
    * <p>
-   * Max buffer size is {@code 8128}, as defined in {@link RoomStatePacket#MAX_BUFF_SIZE}.
+   * Max buffer size is {@link RoomStatePacket#MAX_BUFF_SIZE}.
    */
   default ByteBuffer writeRoomState(ClajProxy proxy) { return null; }
   /** Decode the room state received by the server. */

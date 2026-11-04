@@ -185,10 +185,10 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
         Log.info("Server @ to new connections and rooms.", on ? "closed" : "opened");
       } else if (joins) {
         ClajVars.relay.blockJoin = !on;
-        Log.info("New room creation requests will be @.", on ? "allowed" : "denied");
+        Log.info("Future room join requests will be @.", on ? "allowed" : "denied");
       } else if (rooms) {
         ClajVars.relay.blockCreate = !on;
-        Log.info("Future room join requests will be @.", on ? "allowed" : "denied");
+        Log.info("New room creation requests will be @.", on ? "allowed" : "denied");
       }
     });
 

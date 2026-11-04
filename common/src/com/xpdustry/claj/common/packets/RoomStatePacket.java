@@ -27,7 +27,7 @@ import arc.util.io.ByteBufferOutput;
 
 public class RoomStatePacket implements Packet {
   /** Maximum buffer size allowed for a state. Anything exceeding this limit will be truncated. */
-  public static final int MAX_BUFF_SIZE = 8128;
+  public static final int MAX_BUFF_SIZE = 1<<10;
 
   public ByteBuffer state;
 

@@ -61,7 +61,8 @@ public class NetListenerEvent implements Runnable, Pool.Poolable {
       boolean closed = e.getMessage() != null && e.getMessage().contains("closed");
       connection.close(closed ? DcReason.closed : DcReason.error);
     } finally {
-      if (!pool.offer(this)) ByteBufferPool.free(buffer);
+      ByteBufferPool.free(buffer);
+      pool.offer(this);
     }
   }
 
@@ -71,7 +72,7 @@ public class NetListenerEvent implements Runnable, Pool.Poolable {
     type = -1;
     connection = null;
     reason = null;
-    buffer.clear();
+    buffer = ByteBufferPool.getHeap(0);
     object = null;
     listener = null;
     serializer = null;
@@ -85,12 +86,7 @@ public class NetListenerEvent implements Runnable, Pool.Poolable {
     o.connection = connection;
     o.reason = reason;
     if (buffer != null) {
-      int len = buffer.remaining();
-      if (len > o.buffer.capacity()) {
-        ByteBuffer b = o.buffer;
-        o.buffer = ByteBufferPool.getHeap(len);
-        ByteBufferPool.free(b);
-      } else o.buffer.clear();
+      o.buffer = ByteBufferPool.getHeap(buffer.remaining());
       o.buffer.put(buffer).flip();
     }
     o.object = object;

@@ -189,6 +189,7 @@ public class MindustryClajProvider implements ClajProvider {
     Call.sendMessage("[scarlet][[CLaJ Server]:[] " +
       Core.bundle.get("claj.message." + Strings.camelToKebab(message.name())));
 
+    if (message != MessageType.serverClosing) return;
     Timer.schedule(() -> {
       if (!proxy.roomCreated()) return;
       proxy.closeRoom(CloseReason.serverClosed);

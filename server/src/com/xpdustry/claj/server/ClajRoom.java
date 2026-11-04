@@ -426,7 +426,7 @@ public class ClajRoom implements NetListener {
 
   public void setState(ByteBuffer rawState) {
     if (closed) return;
-    if (rawState != null && rawState.remaining() >= RoomInfoPacket.MAX_BUFF_SIZE)
+    if (rawState != null && rawState.remaining() > RoomInfoPacket.MAX_BUFF_SIZE)
       throw new IllegalArgumentException("Buffer size must be less than " + RoomInfoPacket.MAX_BUFF_SIZE);
 
     lastReceivedState = Time.nanos();

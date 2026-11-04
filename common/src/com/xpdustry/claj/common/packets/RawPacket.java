@@ -77,8 +77,14 @@ public class RawPacket implements Packet {
     return flipped ? second : first;
   }
 
+  /** Note: The copy is sized to the remaining data, not to capacity of the original. */
   public RawPacket copy() {
-    return new RawPacket().read(data());
+    ByteBuffer data = data();
+    int pos = data.position();
+    RawPacket copy = new RawPacket();
+    copy.flipIfNeeded(data.remaining()).put(data).flip();
+    data.position(pos);
+    return copy;
   }
 
 

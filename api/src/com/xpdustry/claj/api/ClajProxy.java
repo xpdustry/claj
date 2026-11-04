@@ -91,11 +91,14 @@ public class ClajProxy extends ProxyClient {
 
   public void createRoom(String host, int port, Cons<ClajLink> created, Cons<CloseReason> closed,
                          Cons<Throwable> failed) {
+    close();
+    roomCreated = created;
+    roomClosed = closed;
     try {
       connect(host, port);
-      roomCreated = created;
-      roomClosed = closed;
     } catch (Exception e) {
+      roomCreated = null;
+      roomClosed = null;
       runRoomClose(CloseReason.error);
       failed.get(e);
     } finally {

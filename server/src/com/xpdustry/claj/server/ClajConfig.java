@@ -318,6 +318,10 @@ public class ClajConfig {
       Set to &lbdebug&lw to write everything, or &lbnone&lw to write nothing.
       """, Strings.toSentence(Structs.iterable(LogLevel.values()), LogLevel::name, ", ", " or ")),
       "Maximum number of connections (not clients) allowed on this server. Set to &lb0&lw to disable.",
+      """
+      Maximum number of connections allowed per ip address.
+      Keep it high enough for clients sharing the same address. Set to &lb0&lw to disable.
+      """.trim(),
       "Maximum number of rooms that can be created on this server. Set to &lb0&lw to disable.",
       """
       Maximum number of rooms allowed per ip address. Also used as a rate-limit per minute.
@@ -406,6 +410,7 @@ public class ClajConfig {
                                                    v -> Log.level = v ? LogLevel.debug : LogLevel.info);
   public static Field<LogLevel> writeLogLevel = new Field<>("write-log-level", fieldDescs.pop(), LogLevel.err);
   public static Field<Integer> maxConnections = new Field<>("max-connections", fieldDescs.pop(), 1<<23);
+  public static Field<Integer> connectionLimit = new Field<>("connection-limit", fieldDescs.pop(), 1<<6);
   public static Field<Integer> maxRooms = new Field<>("max-rooms", fieldDescs.pop(), 1<<16);
   public static Field<Integer> roomLimit = new Field<>("room-limit", fieldDescs.pop(), 16);
   public static Field<Short> clientLimit = new Field<>("client-limit", fieldDescs.pop(), (short)(1<<8));

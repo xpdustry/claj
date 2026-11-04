@@ -20,21 +20,22 @@
 package com.xpdustry.claj.common.status;
 
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.util.Arrays;
 
+import arc.util.Strings;
 import arc.util.io.ByteBufferInput;
 import arc.util.io.ByteBufferOutput;
 
 
 /**
- * Must be in ASCII, {@code 16} <u>BYTES</u> max, and without spaces. <br>
- * Type will be truncated if greater than {@link #SIZE}, and spaces will be replaced by {@code '_'}.
+ * Must be in printable ASCII, between {@code 1} and {@code 16} <u>BYTES</u>.
+ * <p>
+ * Type will be truncated if greater than {@link #MAX_SIZE}, spaces will be replaced by {@code '_'},
+ * and unknown characters replaced by {@code '?'}.
  */
 public class ClajType {
-  public static final Charset ASCII = Charset.forName("ascii");
   /** In bytes. */
-  public static final int SIZE = 16;
+  public static final int MIN_SIZE = 1, MAX_SIZE = 16;
 
   protected final byte[] rawType;
   protected final String type;
@@ -42,7 +43,7 @@ public class ClajType {
 
   /** @see #encode(String) */
   public ClajType(String str) {
-    if (str == null || (str = str.trim()).isEmpty())
+    if (str == null || str.length() < MIN_SIZE)
       throw new IllegalArgumentException("no type specified");
     rawType = encode(str);
     type = decode(rawType);
@@ -51,9 +52,10 @@ public class ClajType {
 
    /** @see #decode(byte[]) */
   public ClajType(byte[] data) {
-    if (data.length < 1) throw new IllegalArgumentException("no type specified");
-    rawType = truncate(data, SIZE, true);
+    if (data == null || data.length < MIN_SIZE)
+      throw new IllegalArgumentException("no type specified");
     type = decode(data);
+    rawType = encode(type);
     hash = Arrays.hashCode(rawType);
   }
 
@@ -106,45 +108,59 @@ public class ClajType {
 
   /** @see #decode(byte[]) */
   public static ClajType read(ByteBuffer in) {
-    byte size = in.get();
-    if (size < 1) throw new IllegalArgumentException("no type specified");
-    byte[] data = new byte[size];
+    byte[] data = new byte[in.get()];
     in.get(data);
-    return new ClajType(decode(data), truncate(data, SIZE, false));
+    return new ClajType(data);
   }
 
   /** @see #decode(byte[]) */
   public static ClajType read(ByteBufferInput in) {
-    byte size = in.readByte();
-    if (size < 1) throw new IllegalArgumentException("no type specified");
-    byte[] data = new byte[size];
+    byte[] data = new byte[in.readByte()];
     in.readFully(data);
-    return new ClajType(decode(data), truncate(data, SIZE, false));
+    return new ClajType(data);
   }
 
   // Encoding utilities
 
-  /** Data will be truncated if length is greater than {@link #SIZE}. */
+  /** Data will be truncated if length is greater than {@link #MAX_SIZE}. */
   public static String decode(byte[] data) {
-    return new String(data, 0, Math.min(data.length, SIZE), ASCII).replace(' ', '_');
+    data = truncate(data);
+    validate(data);
+    return new String(data, Strings.ascii);
   }
 
-  /** {@code str} will be truncated if length is greater than {@link #SIZE}. */
+  /** {@code str} will be truncated if length is greater than {@link #MAX_SIZE}. */
   public static byte[] encode(String str) {
-    return truncate(str.replace(' ', '_').getBytes(ASCII), SIZE, false);
+    byte[] data = truncate(str.getBytes(Strings.ascii));
+    validate(data);
+    return data;
   }
 
-  public static byte[] truncate(byte[] data, int max, boolean copy) {
-    if (copy) data = Arrays.copyOf(data, Math.min(data.length, max));
-    else if (data.length > SIZE) data = Arrays.copyOf(data, max);
-    return data;
+  /** Copy data if greater than {@link #MAX_SIZE}. */
+  public static byte[] truncate(byte[] data) {
+    return data.length > MAX_SIZE ? Arrays.copyOf(data, MAX_SIZE) : data;
+  }
+
+  /** Replaces spaces by {@code '_'} and invalid characters by {@code '?'}, in place. */
+  public static boolean validate(byte[] data) {
+    boolean equals = true;
+    for (int i=0; i<data.length; i++) {
+      byte c = data[i];
+      data[i] = (byte)(c == ' ' ? '_' : c < ' ' || c > '~' ? '?' : c);
+      equals &= data[i] == c;
+    }
+    return equals;
   }
 
   // Maker
 
-  /** @return the parsed {@link ClajType}, or {@code null} if it's invalid. */
+  /**
+   * @return the parsed {@link ClajType}, or {@code null} if it's invalid.
+   *         Else the the dedicated constructor to adapt it.
+   */
   public static ClajType of(String str) {
-    byte[] t = str.replace(' ', '_').getBytes(ASCII);
-    return t.length < 1 || t.length > SIZE ? null : new ClajType(t);
+    byte[] t = str.getBytes(Strings.ascii);
+    return t.length < MIN_SIZE || t.length > MAX_SIZE || !validate(t) ? null :
+           new ClajType(new String(t, Strings.ascii), t);
   }
 }
