@@ -63,7 +63,7 @@ public final class ByteBufferPool {
     this.directs = new ConcurrentHashMap<>(8);
     this.factor = factor;
     this.bucketCap = bucketCap;
-    this.newBucket = _ -> new Pool<>(bucketCap + 1, () -> null);
+    this.newBucket = _ -> new Pool<>(bucketCap, () -> null);
   }
 
   protected ConcurrentHashMap<Integer, Pool<ByteBuffer>> getBuckets(boolean direct) {

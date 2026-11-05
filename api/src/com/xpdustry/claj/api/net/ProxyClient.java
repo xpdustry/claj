@@ -26,6 +26,7 @@ import java.nio.channels.ClosedSelectorException;
 import arc.func.Cons;
 import arc.net.*;
 import arc.struct.*;
+import arc.util.Reflect;
 
 import com.xpdustry.claj.common.ClajPackets.Disconnect;
 import com.xpdustry.claj.common.net.ClientReceiver;
@@ -90,7 +91,9 @@ public abstract class ProxyClient extends Client {
 
     receiver.handle(Disconnect.class, _ -> {
       Throwable error = getLastProtocolError();
-      if (error != null && errorHandler != null) errorHandler.get(error);
+      if (error == null) return;
+      Reflect.set(Connection.class, this, "lastProtocolError", null);
+      if (errorHandler != null) errorHandler.get(error);
       //also close virtual connections?
     });
   }
@@ -362,7 +365,6 @@ public abstract class ProxyClient extends Client {
     if (con != null) con.notifyIdle0();
     return con;
   }
-
   protected abstract Object makeBroadcastWrapPacket(Object object, boolean tcp);
   protected abstract Object makeBroadcastClosePacket(DcReason reason);
   protected abstract Object makeConWrapPacket(int conId, Object object, boolean tcp);

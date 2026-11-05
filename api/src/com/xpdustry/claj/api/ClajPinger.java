@@ -27,6 +27,7 @@ import java.nio.channels.Selector;
 import arc.func.Cons;
 import arc.net.ArcNetException;
 import arc.net.Client;
+import arc.net.Connection;
 import arc.net.DcReason;
 import arc.net.FrameworkMessage;
 import arc.struct.LongMap;
@@ -95,7 +96,10 @@ public class ClajPinger extends Client {
 
     receiver.handle(Disconnect.class, _ -> {
       Throwable error = getLastProtocolError();
-      if (error != null) provider.handlePingerError(this, error);
+      if (error != null) {
+        Reflect.set(Connection.class, this, "lastProtocolError", null);
+        provider.handlePingerError(this, error);
+      }
       failed(error);
     });
 

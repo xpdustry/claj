@@ -3,22 +3,26 @@ package com.xpdustry.claj.common.util;
 import java.util.concurrent.atomic.*;
 
 import arc.func.Prov;
+import arc.math.Mathf;
 import arc.struct.Seq;
 
 /**
  * Taken from arc-lite.
  * <p>
  * A pool of objects that can be reused to avoid allocation.
+ * This is a bounded MPMC queue from the Vyukov algorithm.
  * The implementation is thread-safe, lock-less, and pool array is preallocated.
- * @author Nathan Sweet
+ *
  * @see Pools
  */
 public class Pool<T> extends arc.util.pooling.Pool<T>{
-    /** The maximum number of objects that can be pooled. */
-    public final int capacity;
     private final AtomicReferenceArray<T> pool;
-    private final AtomicInteger head, tail;
+    private final AtomicLongArray sequences;
+    private final AtomicLong head, tail;
     private final Prov<T> newObject;
+    private final int mask;
+    /** The maximum number of objects that can be pooled. Always a power of two. */
+    public final int capacity;
     /** The highest number of free objects. Can be reset any time. */
     public volatile int peak;
 
@@ -27,13 +31,16 @@ public class Pool<T> extends arc.util.pooling.Pool<T>{
         this(2048, newObject);
     }
 
-    /** @param capacity The maximum number of free objects to store in this pool. */
+    /** @param capacity The maximum pool capacity. Rounded up to a power of two. */
     public Pool(int capacity, Prov<T> newObject){
-      this.capacity = capacity;
+      this.capacity = capacity <= 1 ? 1 : Integer.highestOneBit(capacity - 1) << 1;
+      this.mask = this.capacity - 1;
       this.newObject = newObject;
-      pool = new AtomicReferenceArray<>(capacity);
-      head = new AtomicInteger(0);
-      tail = new AtomicInteger(0);
+      this.head = new AtomicLong();
+      this.tail = new AtomicLong();
+      this.pool = new AtomicReferenceArray<>(this.capacity);
+      this.sequences = new AtomicLongArray(this.capacity);
+      for(int i = 0; i < this.capacity; i++) this.sequences.set(i, i);
     }
 
     @Override
@@ -54,15 +61,17 @@ public class Pool<T> extends arc.util.pooling.Pool<T>{
     /** Same as {@link #obtain()}, but returns {@code null} instead of allocating a new object if the pool is empty. */
     public T poll(){
         for(;;){
-            int h = head.get();
-            int t = tail.get();
-            if(h == t) return null; // Pool empty
-            T e = pool.get(h);
-            if(e != null && head.compareAndSet(h, (h + 1) % capacity)){
-                pool.set(h, null); // Help GC
+            long pos = head.get();
+            int i = (int)pos & mask;
+            long dif = sequences.get(i) - (pos + 1);
+            if(dif < 0) return null; // Pool empty or slot in mid-writing, cut
+            else if(dif == 0 && head.compareAndSet(pos, pos + 1)){
+                T e = pool.get(i);
+                pool.lazySet(i, null); // Help GC
+                sequences.lazySet(i, pos + capacity); // Free for the next round
                 return e;
             }
-            // Lost CAS race or slot is in mid-writing, re-read
+            // Lost CAS race, re-read
         }
     }
 
@@ -83,14 +92,15 @@ public class Pool<T> extends arc.util.pooling.Pool<T>{
     public boolean offer(T object){
         if(object == null) throw new IllegalArgumentException("object cannot be null.");
         for(;;){
-            int h = head.get();
-            int t = tail.get();
-            int i = (t + 1) % capacity;
-            if(i == h) return false; // Pool full
-            if(tail.compareAndSet(t, i)){
-                peak = Math.max(peak, (t - h + capacity) % capacity);
+            long pos = tail.get();
+            int i = (int)pos & mask;
+            long dif = sequences.get(i) - pos;
+            if(dif < 0) return false; // Pool full or slot in mid-reading, cut
+            else if(dif == 0 && tail.compareAndSet(pos, pos + 1)){
                 reset(object);
-                pool.set(t, object);
+                pool.lazySet(i, object); // Published by the sequence
+                sequences.lazySet(i, pos + 1);
+                peak = Math.max(peak, (int)(pos + 1 - head.get()));
                 return true;
             }
             // Lost CAS race, re-read
@@ -142,6 +152,6 @@ public class Pool<T> extends arc.util.pooling.Pool<T>{
      * This can be an estimation if pool is highly used.
      */
     public int getFree(){
-      return (tail.get() - head.get() + capacity) % capacity;
+      return (int)Mathf.clamp(tail.get() - head.get(), 0, capacity);
     }
 }

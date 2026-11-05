@@ -169,7 +169,26 @@ public class MindustryClajProvider implements ClajProvider {
     return new ConnectionPayloadPacket.Serializer() {
       @Override
       public void read(ConnectionPayloadPacket packet, ByteBufferInput read) {
-        packet.object = mindustrySerializer.read(read.buffer);
+        packet.object = null;
+        if (Vars.net.server()) {
+          try { packet.object = mindustrySerializer.read(read.buffer); }
+          catch (Exception e) {
+            String msg = "Dropped an invalid packet from connection @";
+            // Ignore, to not disconnect the host for a client's fault
+            ClajReport.addError(new RuntimeException(Strings.format(msg, packet.conID)));
+            Log.err(msg + ": @.", packet.conID, e);
+          }
+        }
+        // Alert a non fully reads packet
+        if (!read.buffer.hasRemaining()) return;
+        if (packet.object != null) {
+          String msg = "Dropped packet @ from connection @ because @ bytes was remaining";
+          Object[] args = {packet.object.getClass().getName(), packet.conID, read.buffer.remaining()};
+          ClajReport.addError(new RuntimeException(Strings.format(msg, args)));
+          Log.err(msg + ".", args);
+          packet.object = null;
+        }
+        read.buffer.position(read.buffer.limit());
       }
 
       @Override
