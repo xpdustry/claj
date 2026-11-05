@@ -30,8 +30,6 @@ import com.xpdustry.claj.common.status.ServerState;
 import com.xpdustry.claj.common.util.Structs;
 
 
-//FIXME: it's not perfect, keep refreshing servers will fill up pingers, if one is unreachable.
-//TODO: check if still happens
 public class ClajPingerManager {
   protected final int workers;
   protected final ClajProvider provider;
@@ -40,6 +38,8 @@ public class ClajPingerManager {
   protected final Thread[] threads;
   protected final boolean[] reserved;
   protected final Queue<Cons2<ClajPinger, Runnable>> queue = new Queue<>();
+  /** Incremented at each {@link #cancel()}, to know if a task was submitted before. */
+  protected volatile int generation;
 
   public ClajPingerManager(ClajProvider provider) { this(provider, 1); }
   public ClajPingerManager(ClajProvider provider, int workers) {
@@ -151,51 +151,44 @@ public class ClajPingerManager {
     }
   }
 
-  /** Cancel the queue and current tasks. */
+  /**
+   * Cancel the queue and current tasks. <br>
+   * Pingers are not released yet, they will empty the queue in parallel.
+   */
   public synchronized void cancel() {
+    generation++;
     for (ClajPinger pinger : pingers) {
       if (pinger == null) continue;
       pinger.setCancelState(true);
-      pinger.close(); // be sure
-    }
-
-    // Run rest of the queue
-    // We don't care about who will receive the task, this will not block anyway
-    //FIXME: not sure of that =/
-    while (!queue.isEmpty()) {
-      Cons2<ClajPinger, Runnable> task = queue.removeFirst();
-      try { task.get(get(), () -> {}); }
-      catch (Exception _) {}
-    }
-
-    for (ClajPinger pinger : pingers) {
-      if (pinger == null) continue;
-      pinger.close(); // be sure
+      pinger.close();
       pinger.setCancelState(false);
     }
-    for (int i=0; i<pingers.length; i++) reserved[i] = false;
   }
 
   /** Queue the task if all pingers are busy. */
-  protected void submit(Cons2<ClajPinger, Runnable> task) {
+  protected synchronized void submit(Cons2<ClajPinger, Runnable> task) {
+    int gen = generation;
+    // If canceled before running, it fails using its own pinger
+    Cons2<ClajPinger, Runnable> t = (pinger, finished) -> {
+      boolean canceled = gen != generation;
+      if (canceled) pinger.setCancelState(true);
+      try { task.get(pinger, finished); }
+      finally { if (canceled) pinger.setCancelState(false); }
+    };
+
     int index = findFreeI();
-    if (index != -1) submit(index, task);
-    else queue.add(task);
+    if (index != -1) submit(index, t);
+    else queue.add(t);
   }
 
   protected synchronized void submit(int index, Cons2<ClajPinger, Runnable> task) {
     reserved[index] = true;
-    Runnable t = () -> {
-      ClajPinger pinger = ensurePingerPingerStarted(index);
-      task.get(pinger, () -> {
-        synchronized (this) {
-          //arc.util.Log.info("pinger @ finished. queue empty? @", index, queue.isEmpty());
-          if (pinger.canceling || queue.isEmpty()) reserved[index] = false;
-          // Keep reserved, execute next
-          else submit(index, queue.removeFirst());
-        }
-      });
-    };
+    Runnable t = () -> task.get(ensurePingerPingerStarted(index), () -> {
+      synchronized (this) {
+        if (queue.isEmpty()) reserved[index] = false;
+        else submit(index, queue.removeFirst()); // keep reserved, execute next
+      }
+    });
 
     try { provider.postConnect(t); }
     catch (Exception e) { // in case of

@@ -23,7 +23,6 @@ import arc.func.Cons;
 import arc.util.Threads;
 
 import com.xpdustry.claj.common.status.CloseReason;
-import com.xpdustry.claj.common.util.Structs;
 
 
 public class ClajProxyManager {
@@ -118,7 +117,7 @@ public class ClajProxyManager {
   public synchronized boolean isBusy(int index) {
     if (reserved[index]) return true;
     ClajProxy proxy = getOrNull(index);
-    return proxy != null && (proxy.roomCreated() || proxy.isConnecting());
+    return proxy != null && (proxy.isConnected() || proxy.isConnecting());
   }
 
   /** Checks the first proxy. */
@@ -213,8 +212,10 @@ public class ClajProxyManager {
         reserved[index] = false;
       }
     };
-    Runnable task = () ->
-      proxy.createRoom(host, port, created, Structs.and(closed, release), Structs.and(failed, release));
+    Runnable task = () -> {
+      try { proxy.createRoom(host, port, created, closed, failed); }
+      finally { release.run(); }
+    };
 
     try { provider.postConnect(task); }
     catch (Exception e) { // in case of
