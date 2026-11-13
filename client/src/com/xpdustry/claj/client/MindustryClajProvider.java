@@ -175,7 +175,7 @@ public class MindustryClajProvider implements ClajProvider {
           catch (Exception e) {
             String msg = "Dropped an invalid packet from connection @";
             // Ignore, to not disconnect the host for a client's fault
-            ClajReport.addError(new RuntimeException(Strings.format(msg, packet.conID)));
+            ClajReport.addError(new RuntimeException(Strings.format(msg, packet.conID), e));
             Log.err(msg + ": @.", packet.conID, e);
           }
         }

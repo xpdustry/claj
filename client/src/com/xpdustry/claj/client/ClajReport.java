@@ -20,6 +20,7 @@
 package com.xpdustry.claj.client;
 
 import java.net.URLEncoder;
+
 import arc.Core;
 import arc.graphics.Color;
 import arc.scene.ui.CheckBox;
@@ -27,6 +28,7 @@ import arc.scene.ui.Dialog;
 import arc.scene.ui.Label;
 import arc.struct.Seq;
 import arc.util.Align;
+import arc.util.Structs;
 
 import mindustry.Vars;
 import mindustry.ui.dialogs.BaseDialog;
@@ -37,7 +39,11 @@ import com.xpdustry.claj.common.util.Strings;
 
 public class ClajReport {
   public static final String FORM_URL = "https://claj.xpdustry.com/form";
+  /** Maximum number of errors kept for the bug report. Prevents the list from growing when errors are spammed. */
+  public static final int maxErrors = 32;
   protected static final Seq<Throwable> lastErrors = new Seq<>();
+  /** Number of errors not kept because {@link #lastErrors} was full. */
+  protected static int moreErrors;
   /** Dummy {@link Label} to help with bundle parsing. */
   protected static final Label dummy = new Label("");
 
@@ -58,16 +64,22 @@ public class ClajReport {
     Core.app.openURI(FORM_URL + getParams("Bug Report", Strings.wordTruncate(message, 64, "..."), message));
   }
 
-  public static void addError(Throwable err) {
-    lastErrors.add(err);
+  /** Does not add duplicates and stops adding when reaching {@link #maxErrors}. */
+  public static synchronized void addError(Throwable err) {
+    if (lastErrors.contains(e -> e.getClass() == err.getClass() &&
+        Structs.eq(e.getMessage(), err.getMessage()))) return;
+    if (lastErrors.size >= maxErrors) moreErrors++;
+    else lastErrors.add(err);
   }
 
-  public static void clearErrors() {
+  public static synchronized void clearErrors() {
     lastErrors.clear();
+    moreErrors = 0;
   }
 
   public static String formatLastErrors() {
-    return lastErrors.toString("\n\n", Strings::neatError);
+    String errors = lastErrors.toString("\n\n", Strings::neatError);
+    return moreErrors > 0 ? errors + "\n\n... and " + moreErrors + " more errors." : errors;
   }
 
   protected static String getParams(String type) { return getParams(type, null, null); }

@@ -448,7 +448,7 @@ public class ClajConfig {
   public static Field<Integer> stateTimeout = new Field<>("state-timeout", fieldDescs.pop(), 20);
   public static Field<Integer> listLifetime = new Field<>("list-lifetime", fieldDescs.pop(), 60);
   public static Field<Integer> listTimeout = new Field<>("list-timeout", fieldDescs.pop(), 30);
-  public static Field<Integer> raterLifetime = new Field<>("rater-tifetime", fieldDescs.pop(), 5 * 60);
+  public static Field<Integer> raterLifetime = new Field<>("rater-lifetime", fieldDescs.pop(), 5 * 60);
   public static Field<Integer> afkTime = new Field<>("afk-time", fieldDescs.pop(), 2 * 60);
   public static Field<Boolean> dualThread = new Field<>("dual-thread", fieldDescs.pop(), true);
   public static SetField<String> blacklist = new SetField<>("blacklist", fieldDescs.pop(), String.class);

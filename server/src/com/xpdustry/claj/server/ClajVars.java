@@ -109,20 +109,21 @@ public class ClajVars {
   }
 
   /** Does not remove ANSI codes. */
-  public static void logToFile(String text) {
+public static void logToFile(String text) {
+    Fi file = currentLogFile; // To be sure
     try {
-      if (currentLogFile != null && currentLogFile.length() > maxLogLength) {
-        currentLogFile.writeString("[End of log file. Date: " + logDateformat.format(LocalDateTime.now()) + "]\n", true);
-        currentLogFile = null;
+      if (file != null && file.length() > maxLogLength) {
+        file.writeString("[End of log file. Date: " + logDateformat.format(LocalDateTime.now()) + "]\n", true);
+        file = null;
       }
-      if (currentLogFile == null) {
+      if (file == null) {
         int i = 0;
         while (logFolder.child("log-" + i + ".txt").length() >= maxLogLength) i++;
-        currentLogFile = logFolder.child("log-" + i + ".txt");
+        file = currentLogFile = logFolder.child("log-" + i + ".txt");
       }
-      currentLogFile.writeString(text + "\n", true);
+      file.writeString(text + "\n", true);
     } catch (Throwable e) {
-      System.err.println("Unable to write message to '" + currentLogFile + "': " + e.toString());
+      System.err.println("Unable to write message to '" + file + "': " + e.toString());
     }
   }
 }

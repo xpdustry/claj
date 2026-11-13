@@ -370,7 +370,10 @@ public class ClajRoutines {
 
       cancelClean();
       int life = ClajConfig.raterLifetime.get();
-      if (life <= 0) return;
+      if (life <= 0) {
+        rates.remove(address);
+        return;
+      }
       clean = Timer.schedule(() -> {
         if (clean == null) return; // Cancelled after being posted
         clean = null;
