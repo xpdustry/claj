@@ -48,8 +48,8 @@ subprojects {
     def releaseJar = { ModPlatform.ANDROID in toxopid.platforms.get() ? mergeJar : jar }
     dependsOn releaseJar
     manifest.from releaseJar().manifest
-    from { 
-      zipTree(releaseJar().archiveFile) 
+    from {
+      zipTree(releaseJar().archiveFile)
     }
     // Add dependencies
     from {
@@ -99,7 +99,7 @@ project(":client") {
     include "mod.hjson"
     include "icon.png"
   }
-  
+
   // This is badly made... We need to make a fat jar just for dex compilation,
   // as the property only takes one file as argument
   task mergeDependenciesForDexJar(type: Jar) {
@@ -148,6 +148,39 @@ project(":server") {
   }
 }
 
+project(":bench") {
+  ext.mainClassName = "com.xpdustry.claj.bench.Main"
+  toxopid.platforms = [ModPlatform.SERVER]
+  compileJava.options.release = 21 // Yea we are modern sometime =)
+
+  dependencies {
+    implementation "info.picocli:picocli:4.7.6"
+    implementation toxopid.dependencies.arcCore
+  }
+
+  jar {
+    manifest.attributes["Main-Class"] = project.mainClassName
+    manifest.attributes["Implementation-Version"] = metadata.version
+  }
+
+  // Only the utilities of Arc are used
+  def keptGeom = ["Position", "Vec2", "Vector"].collect { "arc/math/geom/${it}.class".toString() }
+  release {
+    exclude "arc/graphics/**", "arc/scene/**", "arc/assets/**", "arc/audio/**", "arc/input/**", "arc/mock/**",
+            "arc/util/noise/**", "arc/util/viewport/**"
+    exclude { it.path.startsWith("arc/math/geom/") && !keptGeom.contains(it.path) }
+  }
+
+  // Usage: ./gradlew :bench:run -PbenchArgs="compare --server ..."
+  task run(type: JavaExec, dependsOn: classes) {
+    mainClass = project.mainClassName
+    classpath = sourceSets.main.runtimeClasspath
+    standardInput = System.in
+    workingDir = rootDir
+    args = (findProperty("benchArgs") ?: "help").toString().split(" ").toList()
+  }
+}
+
 // To shut up Javadoc
 subprojects {
   javadoc.options {
@@ -156,6 +189,7 @@ subprojects {
     addStringOption("-release", "25")
   }
 }
+
 
 // Publishing
 subprojects {
