@@ -27,10 +27,14 @@ import arc.util.Strings;
 
 
 /**
- * Hand-written wire format of the two CLaJ protocol generations, to not depend on the CLaJ sources.
+ * Hand-written wire format of the CLaJ protocol generations, to not depend on the CLaJ sources.
  * <p>
  * Frame (TCP): {@code u16 length + body}. Datagram (UDP): {@code body}.
  * Body: {@code -2 + framework type...}, {@code -4 + claj packet id...} or a raw payload.
+ * <p>
+ * The stream relay ({@code stream-notes/protocol.md}) frames stages 1-2 the same way, with {@code u8 type + body}.
+ * Then a client's TCP is a raw stream, which the bench frames as {@code u16 length + payload} like the others,
+ * and a host's TCP is a mux of {@code u8 type, i32 conId, u16 length} frames.
  */
 final class Proto {
   static final byte FRAMEWORK = -2, CLAJ = -4;
@@ -43,8 +47,19 @@ final class Proto {
   /** Kinds of the received claj packets that matter, the others are {@code 0}. */
   static final byte K_PAYLOAD = 1, K_CON_JOIN = 2, K_IDLE = 3, K_LINK = 4, K_ROOM_CLOSED = 5, K_JOIN_DENIED = 6;
 
+  // Stream relay: stage 1-2 message types, then the host mux frame types.
+  static final byte S_HELLO = 1, S_HELLO_TCP = 2, S_HELLO_UDP = 3, S_WELCOME = 4, S_JOIN = 17, S_JOIN_ACCEPTED = 18,
+                    S_JOIN_DENIED = 19, S_CREATE = 21, S_CREATED = 22, S_CLOSED = 23;
+  static final byte M_OPEN = 1, M_DATA = 2, M_CLOSE = 3, M_WINDOW = 4, M_FIN = 5, M_CONTROL = 6, M_DGRAM = 7;
+  /** Mux frame header, and the credit of each stream direction. */
+  static final int MUX_HEADER = 7, WINDOW = 65536;
+  /** Largest datagram payload the stream relay forwards; bigger ones are dropped. */
+  static final int MAX_STREAM_DATAGRAM = 4096;
+
   /** {@code true} for 2.3.x, {@code false} for 2.4.x. Other versions are not compatible. */
   final boolean legacy;
+  /** The stream relay, which uses the 2.4.x room packets in its own framing. */
+  final boolean stream;
   /** Major version expected by 2.4.x servers in room creation requests. */
   final int version;
   /** Version sent to 2.3.x servers, must not be lower than theirs. */
@@ -53,8 +68,9 @@ final class Proto {
   final byte idPayload, idCreate, idJoin;
   final byte[] kinds = new byte[256];
 
-  private Proto(boolean legacy, int version, String legacyVersion, String type) {
+  private Proto(boolean legacy, boolean stream, int version, String legacyVersion, String type) {
     this.legacy = legacy;
+    this.stream = stream;
     this.version = version;
     this.legacyVersion = legacyVersion.getBytes(Strings.utf8);
     this.type = type.getBytes(Strings.ascii);
@@ -71,10 +87,13 @@ final class Proto {
   }
 
   static Proto v23() {
-    return new Proto(true, -1, "2.3.3", "bench");
+    return new Proto(true, false, -1, "2.3.3", "bench");
   }
   static Proto v24() {
-    return new Proto(false, 4, "", "bench");
+    return new Proto(false, false, 4, "", "bench");
+  }
+  static Proto stream() {
+    return new Proto(false, true, 4, "", "bench");
   }
 
   /** Kind of the claj packet whose id is at {@code pos+1}. */
@@ -84,7 +103,7 @@ final class Proto {
 
   @Override
   public String toString() {
-    return legacy ? "2.3.x" : "2.4.x";
+    return legacy ? "2.3.x" : stream ? "stream" : "2.4.x";
   }
 
   // region writers (body only, frame length is handled by Peer)
@@ -96,14 +115,26 @@ final class Proto {
     b.put(FRAMEWORK).put(FW_KEEPALIVE);
   }
 
+  /** {@code HELLO_TCP} or {@code HELLO_UDP}, the stream relay's registration. */
+  static void writeHello(ByteBuffer b, boolean udp, long token) {
+    b.put(udp ? S_HELLO_UDP : S_HELLO_TCP).putLong(token);
+  }
+
+  /** A host mux frame header. */
+  static void writeMux(ByteBuffer b, byte type, int conId, int length) {
+    b.put(type).putInt(conId).putShort((short)length);
+  }
+
   void writeCreate(ByteBuffer b) {
-    b.put(CLAJ).put(idCreate);
+    if (stream) b.put(S_CREATE); // the 2.4.x body follows
+    else b.put(CLAJ).put(idCreate);
     if (legacy) b.putShort((short)legacyVersion.length).put(legacyVersion);
     else b.putShort((short)0).putInt(version).put((byte)type.length).put(type);
   }
 
   void writeJoin(ByteBuffer b, long roomId) {
-    b.put(CLAJ).put(idJoin).putLong(roomId);
+    if (stream) b.put(S_JOIN).putLong(roomId);
+    else b.put(CLAJ).put(idJoin).putLong(roomId);
     if (!legacy) b.put((byte)0).putShort((short)-1).put((byte)type.length).put(type);
   }
 
@@ -117,6 +148,7 @@ final class Proto {
   /** Parses a version like {@code 2.4.5} or {@code 2.3.3-v8}, from a jar manifest or the command line. */
   static Proto fromVersion(String version) {
     String v = version.trim().replaceFirst("^v", "");
+    if (v.equals("stream")) return stream();
     if (v.matches("2\\.3([.-].*)?")) return v23();
     if (v.matches("2\\.4([.-].*)?")) return v24();
     throw new IllegalArgumentException("CLaJ " + version + " is not supported, only 2.3.x and 2.4.x are");
@@ -144,6 +176,14 @@ final class Proto {
         throw new IOException("Unknown discovery response (" + res.getLength() + " bytes)");
       }
     }
+    // The stream relay drops unknown datagrams, but greets every TCP connection with a HELLO.
+    try (Socket socket = new Socket()) {
+      socket.connect(address, 1000);
+      socket.setSoTimeout(1000);
+      byte[] hello = new byte[3];
+      if (socket.getInputStream().readNBytes(hello, 0, 3) == 3 && hello[0] == 0 && hello[1] == 10 && hello[2] == S_HELLO)
+        return stream();
+    } catch (IOException ignored) {}
     throw new IOException("No discovery response from " + address + ". Use --proto to set it manually.");
   }
 

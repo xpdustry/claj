@@ -48,7 +48,11 @@ final class ServerProcess implements AutoCloseable {
   static final OrderedMap<String, Object> MODERN_CONFIG = OrderedMap.of(
     "debug", false, "max-connections", 0, "connection-limit", 0, "register-timeout", 30, "max-rooms", 0,
     "room-limit", 0, "client-limit", 0, "spam-limit", 0, "host-spam-limit", 0, "join-limit", 0, "afk-time", 0,
-    "warn-closing", false
+    "warn-closing", false, "client-rate", 0, "host-rate", 0 // The rates replace the spam limits since the stream relay
+  );
+  /** On top of {@link #MODERN_CONFIG}, for the stream relay. */
+  static final OrderedMap<String, Object> STREAM_CONFIG = OrderedMap.of(
+    "control-timeout", 60, "idle-timeout", 0 // The bench's stream hosts don't send PING
   );
 
   /** {@code --server <jar> [--label <name>] [--set <key=value>]...} */
@@ -63,6 +67,9 @@ final class ServerProcess implements AutoCloseable {
             description = "Overrides a value of its config.json, e.g. dual-thread=false.")
     Map<String, String> config = new LinkedHashMap<>();
 
+    @Option(names = "--stream", description = "Benches its stream relay, on the port, with the 2.x one next to it.")
+    boolean stream;
+
     Proto proto;
 
     /** Reads the version from the jar manifest. */
@@ -73,14 +80,15 @@ final class ServerProcess implements AutoCloseable {
         version = f.getManifest() == null ? null : f.getManifest().getMainAttributes().getValue("Claj-Version");
       }
       if (version == null) throw new IllegalArgumentException("no Claj-Version in the manifest of " + jar);
-      proto = Proto.fromVersion(version);
-      if (label == null) label = version + (config.isEmpty() ? "" : " " + config);
+      proto = stream ? Proto.stream() : Proto.fromVersion(version);
+      if (label == null) label = version + (stream ? " stream" : "") + (config.isEmpty() ? "" : " " + config);
       return this;
     }
 
     OrderedMap<String, Object> serverConfig() {
       OrderedMap<String, Object> m = new OrderedMap<>();
       m.putAll(proto.legacy ? LEGACY_CONFIG : MODERN_CONFIG);
+      if (proto.stream) m.putAll(STREAM_CONFIG);
       config.forEach((k, v) -> m.put(k, v.equals("true") || v.equals("false") ? Boolean.valueOf(v) :
                                         Strings.canParseInt(v) ? (Object)Integer.valueOf(v) :
                                         Strings.canParseFloat(v) ? (Object)Float.valueOf(v) : v));
@@ -101,7 +109,9 @@ final class ServerProcess implements AutoCloseable {
   /** Starts the server and waits until it accepts connections. */
   static ServerProcess start(Spec spec, int port, Fi dir, List<String> jvmArgs, String cpus) throws Exception {
     dir.mkdirs();
-    dir.child("config.json").writeString(Report.JSON.prettyPrint(spec.serverConfig()));
+    OrderedMap<String, Object> config = spec.serverConfig();
+    if (spec.stream) config.put("stream-port", port);
+    dir.child("config.json").writeString(Report.JSON.prettyPrint(config));
 
     Seq<String> cmd = new Seq<>(String.class);
     if (cpus != null) {
@@ -110,7 +120,8 @@ final class ServerProcess implements AutoCloseable {
     }
     cmd.add(ProcessHandle.current().info().command().orElse("java"));
     cmd.addAll(jvmArgs);
-    cmd.add("-Dfile.encoding=UTF-8", "-jar", spec.jar.toString(), String.valueOf(port));
+    // With --stream, the bench's port is the stream relay's, the 2.x one comes next.
+    cmd.add("-Dfile.encoding=UTF-8", "-jar", spec.jar.toString(), String.valueOf(spec.stream ? port + 1 : port));
 
     Process p = new ProcessBuilder(cmd.list())
       .directory(dir.file())

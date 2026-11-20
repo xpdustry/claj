@@ -111,7 +111,7 @@ public final class Main implements Runnable, IVersionProvider {
     int port = 7000;
 
     @Option(names = "--proto", paramLabel = "<version>",
-            description = "auto (discovery packet), 2.3 or 2.4. (default: ${DEFAULT-VALUE})")
+            description = "auto (discovery packet), 2.3, 2.4 or stream. (default: ${DEFAULT-VALUE})")
     String proto = "auto";
 
     @Option(names = "--label", paramLabel = "<name>", description = "Name of the server in results. (default: the host)")
