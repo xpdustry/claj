@@ -71,9 +71,14 @@ public class TaskQueue{
     }
 
     public void run(){
+        run(Integer.MAX_VALUE);
+    }
+
+    /** Runs the tasks posted so far, at most {@code max} of them. */
+    public void run(int max){
         if(!draining.compareAndSet(false, true)) return;
         try{
-            for(int n = size.get(); n > 0; n--){
+            for(int n = Math.min(size.get(), max); n > 0; n--){
                 Runnable task = poll();
                 if(task == null) break;
                 size.decrementAndGet();

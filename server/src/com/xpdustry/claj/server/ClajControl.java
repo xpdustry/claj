@@ -243,18 +243,22 @@ public class ClajControl extends CommandHandler implements ApplicationListener {
         Log.info("Rooms: [total: @]", ClajVars.relay.rooms.size);
         ClajVars.relay.rooms.eachValue(r -> {
           NetworkSpeed n = r.transferredPackets;
-          Log.info("&lk|&fr @ @: @ client" + (r.isEmpty() ? "" : "s") +
-                   " (@). @ p/s in, @ p/s out (@ in, @ out).",
-                   r.isPublic ? "&lg[O]" : "&lr[P]", r.sid, r.clients() + 1,
-                   Strings.formatDuration(Time.timeSinceMillis(r.createdAt), true),
-                   n.uploadSpeed(), n.downloadSpeed(), n.totalUpload(), n.totalDownload());
+          if (r.isStream()) Log.info("&lk|&fr @ @: @ client" + (r.isEmpty() ? "" : "s") + " (@). Stream.",
+                                     r.isPublic ? "&lg[O]" : "&lr[P]", r.sid, r.clients() + 1,
+                                     Strings.formatDuration(Time.timeSinceMillis(r.createdAt), true));
+          else Log.info("&lk|&fr @ @: @ client" + (r.isEmpty() ? "" : "s") +
+                        " (@). @ p/s in, @ p/s out (@ in, @ out).",
+                        r.isPublic ? "&lg[O]" : "&lr[P]", r.sid, r.clients() + 1,
+                        Strings.formatDuration(Time.timeSinceMillis(r.createdAt), true),
+                        n.uploadSpeed(), n.downloadSpeed(), n.totalUpload(), n.totalDownload());
         });
 
       } else if (args[0].equals("info")) {
         Log.info("Rooms: [total: @]", ClajVars.relay.rooms.size);
         ClajVars.relay.rooms.eachValue(r -> {
-          Log.info("&lk|&fr Room @: [@ client" + (r.isEmpty() ? "" : "s") + ", type: @, @]", r.sid,
-                   r.clients() + 1, r.type, r.isPublic ? "&lgpublic" : "&lrprivate");
+          Log.info("&lk|&fr Room @: [@ client" + (r.isEmpty() ? "" : "s") + ", type: @, @" +
+                   (r.isStream() ? ", stream]" : "]"), r.sid, r.clients() + 1, r.type,
+                   r.isPublic ? "&lgpublic" : "&lrprivate");
           Log.info("&lk| |&fr [H] Connection @&fr - @", r.host.sid, r.host.saddress);
           r.clients.each(c -> Log.info("&lk| |&fr [C] Connection @&fr - @", c.sid, c.saddress));
           Log.info("&lk|&fr");

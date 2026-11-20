@@ -41,6 +41,9 @@ abstract class Peer {
   SelectionKey key, ukey;
   /** Connection id given by the server, also its id in the room. */
   int conId = -1;
+  /** Stream relay: the {@code HELLO} token, and whether the TCP stream is now host mux frames. */
+  long token;
+  boolean mux;
   byte state = CONNECTING;
   boolean dirty, writeInterest, counted;
   long stateTime, lastWrite, retryAt;
@@ -99,6 +102,10 @@ abstract class Peer {
   }
 
   private void connected() throws IOException {
+    if (loop.bench.proto.stream && !keepUdp) { // TCP only, without UDP association
+      setState(WAIT_TCP_REG);
+      return;
+    }
     udp = DatagramChannel.open();
     udp.configureBlocking(false);
     if (keepUdp && loop.bench.sockBuf > 0) udp.setOption(StandardSocketOptions.SO_RCVBUF, loop.bench.sockBuf);
@@ -137,7 +144,8 @@ abstract class Peer {
     long now = loop.now;
     switch (state) {
       case REGISTERED -> {
-        if (now - lastWrite > KEEPALIVE_NS && beginFrame(2)) {
+        // The stream relay has no keep-alive: its streams are raw.
+        if (!loop.bench.proto.stream && now - lastWrite > KEEPALIVE_NS && beginFrame(2)) {
           Proto.writeKeepAlive(out);
           endFrame();
         }
@@ -163,7 +171,8 @@ abstract class Peer {
   private void sendUdpRegister() {
     ByteBuffer b = loop.udpBuf;
     b.clear();
-    Proto.writeRegisterUdp(b, conId);
+    if (loop.bench.proto.stream) Proto.writeHello(b, true, token);
+    else Proto.writeRegisterUdp(b, conId);
     try { udp.write(b.flip()); }
     catch (IOException ignored) {} // retried
   }
@@ -185,15 +194,19 @@ abstract class Peer {
 
     in.flip();
     int lim = in.limit();
-    while (in.remaining() >= 2 && state != CLOSED) {
-      int pos = in.position(), len = in.getShort(pos) & 0xffff;
-      if (lim - pos - 2 < len) break;
-      if (len == 0) {
+    while (state != CLOSED) {
+      // Mux frames are passed whole, header included. Set by a frame, so read again for each.
+      int head = mux ? Proto.MUX_HEADER : 2, pos = in.position();
+      if (lim - pos < head) break;
+      int len = in.getShort(pos + head - 2) & 0xffff;
+      if (lim - pos - head < len) break;
+      if (len == 0 && !mux) {
         error("invalid frame length");
         return;
       }
-      in.position(pos + 2 + len);
-      frame(in, pos + 2, len);
+      in.position(pos + head + len);
+      if (mux) onFrame(in, pos, head + len);
+      else frame(in, pos + 2, len);
     }
     if (state == CLOSED) return;
     in.limit(lim).compact();
@@ -217,6 +230,10 @@ abstract class Peer {
   }
 
   private void frame(ByteBuffer body, int pos, int len) {
+    if (loop.bench.proto.stream) {
+      streamFrame(body, pos, len);
+      return;
+    }
     if (body.get(pos) != Proto.FRAMEWORK) {
       if (state == REGISTERED) onFrame(body, pos, len);
       return;
@@ -230,21 +247,44 @@ abstract class Peer {
         sendUdpRegister();
       }
       case Proto.FW_REG_UDP -> {
-        if (state != WAIT_UDP_REG) return;
-        setState(REGISTERED);
-        loop.connectDone(this);
-        lastWrite = loop.now;
-        if (!keepUdp) {
-          ukey.cancel();
-          try { udp.close(); }
-          catch (IOException ignored) {}
-          udp = null;
-          ukey = null;
-        }
-        onRegistered();
+        if (state == WAIT_UDP_REG) registered();
       }
       default -> {} // keep-alive, ping
     }
+  }
+
+  /** Stage 1 of the stream relay, then its stage 2 replies and stream frames for the peer. */
+  private void streamFrame(ByteBuffer body, int pos, int len) {
+    if (state == REGISTERED) {
+      onFrame(body, pos, len);
+      return;
+    }
+    byte type = body.get(pos);
+    if (type == Proto.S_HELLO && state == WAIT_TCP_REG && len == 10) {
+      token = body.getLong(pos + 2);
+      if (keepUdp) {
+        setState(WAIT_UDP_REG);
+        sendUdpRegister();
+      } else if (beginFrame(9)) {
+        Proto.writeHello(out, false, token);
+        endFrame();
+      }
+    } else if (type == Proto.S_WELCOME && (state == WAIT_TCP_REG || state == WAIT_UDP_REG)) registered();
+    else error("unexpected stage 1 message " + type);
+  }
+
+  private void registered() {
+    setState(REGISTERED);
+    loop.connectDone(this);
+    lastWrite = loop.now;
+    if (!keepUdp && udp != null) {
+      ukey.cancel();
+      try { udp.close(); }
+      catch (IOException ignored) {}
+      udp = null;
+      ukey = null;
+    }
+    onRegistered();
   }
 
   // end region
@@ -252,10 +292,7 @@ abstract class Peer {
 
   /** Reserves space for a frame, must be followed by {@link #endFrame()} if {@code true}. */
   boolean beginFrame(int maxBody) {
-    if (out.remaining() < maxBody + 2) {
-      flush();
-      if (out.remaining() < maxBody + 2) return false;
-    }
+    if (!reserve(maxBody + 2)) return false;
     mark = out.position();
     out.position(mark + 2);
     return true;
@@ -263,6 +300,20 @@ abstract class Peer {
 
   void endFrame() {
     out.putShort(mark, (short)(out.position() - mark - 2));
+    queued();
+  }
+
+  /** Reserves space for bytes without a length, must be followed by {@link #queued()} if {@code true}. */
+  boolean reserve(int bytes) {
+    if (out.remaining() < bytes) {
+      flush();
+      if (out.remaining() < bytes) return false;
+    }
+    return true;
+  }
+
+  /** Schedules the flush of the bytes written to {@link #out}. */
+  void queued() {
     lastWrite = loop.now;
     if (dirty) return;
     dirty = true;

@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.BindException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.Selector;
@@ -41,6 +42,8 @@ import com.xpdustry.claj.common.status.*;
 import com.xpdustry.claj.common.util.AddressUtil;
 import com.xpdustry.claj.common.util.Strings;
 import com.xpdustry.claj.server.ClajEvents.*;
+import com.xpdustry.claj.server.stream.StreamConnection;
+import com.xpdustry.claj.server.util.ByteRate;
 import com.xpdustry.claj.server.util.NetListenerEvent;
 import com.xpdustry.claj.server.util.NetworkSpeed;
 import com.xpdustry.claj.server.util.NioUtils;
@@ -51,6 +54,8 @@ import com.xpdustry.claj.server.util.NioUtils;
 public class ClajRelay extends Server implements ApplicationListener, NetListenerFilter {
   /** Size of the connections write buffer, in bytes. */
   public static final int WRITE_BUFFER_SIZE = /*131072*/32768;
+  /** Least bytes a 2.x packet costs to the rate limit, so a flood of small packets is limited too. */
+  public static final int MIN_PACKET_COST = 1000;
 
   protected boolean closed, stopping, running;
   public boolean blockCreate, blockJoin;
@@ -229,27 +234,31 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     String ip = address == null ? null : address.getHostAddress();
     connection.setName("Connection " + id); // fix id format in stacktraces
 
-    if (isClosed() || ip == null || ClajConfig.blacklist.contains(ip)) {
+    String refusal = refusal(address, ip);
+    if (refusal != null) {
       connection.close(DcReason.closed);
-      warn("Connection @ (@) rejected " +
-           (isClosed() ? "because of a closed server." : "for a blacklisted address."), id, ip);
-      return false;
-    }
-    int max = ClajConfig.maxConnections.get();
-    if (max > 0 && connections.size >= max) { // Not exact but it's enough
-      connection.close(DcReason.closed);
-      warn("Connection @ (@) rejected because the server is full.", id, ip);
-      return false;
-
-    } else if (count(address, ClajConfig.connectionLimit.get())) {
-      connection.close(DcReason.closed);
-      warn("Connection @ (@) rejected because the address has too many connections.", id, ip);
+      warn("Connection @ (@) rejected " + refusal, id, ip);
       return false;
     }
 
     Log.debug("Connection @ (@) received.", id, ip);
     connection.setArbitraryData(new ClajConnection(connection, address, ip, id));
     return true;
+  }
+
+  /**
+   * Checks a new connection of any transport, and counts its address if accepted.
+   * @return why it is refused, {@code null} if accepted.
+   */
+  public String refusal(InetAddress address, String ip) {
+    if (isClosed() || ip == null || ClajConfig.blacklist.contains(ip))
+      return isClosed() ? "because of a closed server." : "for a blacklisted address.";
+    int max = ClajConfig.maxConnections.get();
+    if (max > 0 && connections.size >= max) // Not exact but it's enough
+      return "because the server is full.";
+    else if (count(address, ClajConfig.connectionLimit.get()))
+      return "because the address has too many connections.";
+    return null;
   }
 
   protected boolean count(InetAddress address, int limit) {
@@ -269,6 +278,11 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       if (addressConnections.increment(con.address, 0, -1) <= 1)
         addressConnections.remove(con.address, 0);
     }
+  }
+
+  /** {@link #uncount} for the stream relay, in another package, so that the method stays protected. */
+  public void uncountStream(ClajConnection con) {
+    uncount(con);
   }
 
   /** Weird name =/. Called from network thread. */
@@ -297,7 +311,15 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       rejectObsoleteClient(con);
       return false;
     }
-    return checkRateLimit(con);
+    return checkRateLimit(con, sizeOf(object));
+  }
+
+  /** @return the bytes a 2.x packet costs to the rate limit: its payload, at least {@link #MIN_PACKET_COST}. */
+  public static int sizeOf(Object object) {
+    int size = 0;
+    if (object instanceof RawPacket raw) size = raw.data().remaining();
+    else if (object instanceof ConnectionPayloadPacket wrap && wrap.raw != null) size = wrap.raw.data().remaining();
+    return Math.max(size, MIN_PACKET_COST);
   }
 
   /** We don't need that for moment. Will be useful for back-pressure. called from network thread. */
@@ -311,14 +333,33 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
 
   public void onConnect(ClajConnection connection) {
     if (connection == null) return;
+    // Arc draws its ids at random and the stream relay takes free ones, so an Arc id can meet a stream one.
+    ClajConnection other = connections.get(connection.id);
+    if (other != null && other != connection) {
+      rejectDuplicateId(connection);
+      return;
+    }
     connections.put(connection.id, connection);
     Events.fire(new ClientConnectedEvent(connection));
   }
 
+  /** Closes a connection whose id is already taken, before anything of it reaches the rooms. */
+  protected void rejectDuplicateId(ClajConnection connection) {
+    uncount(connection);
+    connection.connection.setArbitraryData(null); // Its next events are ignored, see toClajCon()
+    connection.close(DcReason.error);
+    warn("Connection @ (@) rejected because its id is already taken.", connection.sid, connection.saddress);
+  }
+
+  /** The cleanup is done even if an event handler throws, the error is thrown after it. */
   public void onDisconnect(ClajConnection connection, DcReason reason) {
     if (connection == null) return;
-    Events.fire(new ClientDisonnectedEvent(connection, reason));
-    connections.remove(connection.id);
+    try { Events.fire(new ClientDisonnectedEvent(connection, reason)); }
+    finally { disconnected(connection, reason); }
+  }
+
+  protected void disconnected(ClajConnection connection, DcReason reason) {
+    if (connections.get(connection.id) == connection) connections.remove(connection.id);
     connection.clearQueue();
 
     ClajRoom room = connection.currentRoom();
@@ -427,7 +468,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       removeClient(connection);
     }
 
-    room = getRoom(roomId);
+    room = getRoom(connection, roomId);
 
     // Check room accessibility
     if (isClosed() || blockJoin) {
@@ -547,7 +588,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
       return false;
     }
 
-    ClajRoom room = getRoom(roomId);
+    ClajRoom room = getRoom(connection, roomId);
     if (room == null) {
       rejectRoomInfo(connection, null, false);
       warn("Connection @ tried to get state of a not found room. (id: @)", connection.sid,
@@ -710,7 +751,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
 
   @Override
   public void init() {
-    Events.on(ClajEvents.ServerLoadedEvent.class, _ -> host(port));
+    if (port > 0) Events.on(ClajEvents.ServerLoadedEvent.class, _ -> host(port));
   }
 
   /** At this point it's too late to notify closure. */
@@ -730,7 +771,11 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   public void host(int port) throws RuntimeException {
     running = false;
     stop(false);
-    try { bind(port, port); }
+    try {
+      String address = ClajConfig.bindAddress.get();
+      if (address.isEmpty()) bind(port, port);
+      else bind(new InetSocketAddress(address, port), new InetSocketAddress(address, port));
+    }
     catch (BindException e) {
       throw new RuntimeException("Port " + port + " already in use! "
                                + "Make sure no other servers are running on the same port.");
@@ -767,14 +812,10 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     }
     stopping = closed = true;
     if (!notify) {
-      clearAndStop();
-      if (stopped != null) stopped.run();
+      clearAndStop(stopped);
       return;
     }
-    notifyStop(() -> {
-      clearAndStop();
-      if (stopped != null) stopped.run();
-    });
+    notifyStop(() -> clearAndStop(stopped));
   }
 
   /** Will notify stopping and wait a little before running callback. (if configured for) */
@@ -788,11 +829,35 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     } else notified.run();
   }
 
+  /** Runs the callback even if an event handler throws while stopping, then throws the first error. */
+  protected void clearAndStop(Runnable stopped) {
+    Throwable error = null;
+    try { clearAndStop(); }
+    catch (RuntimeException | Error e) { error = e; }
+    try { if (stopped != null) stopped.run(); }
+    catch (RuntimeException | Error e) {
+      if (error == null) error = e;
+      else if (e != error) error.addSuppressed(e);
+    }
+    rethrow(error);
+  }
+
   protected void clearAndStop() {
-    closeRooms();
-    for (ClajConnection con : connections.values()) con.clearQueue();
-    connections.clear();
-    super.stop();
+    try { closeRooms(); }
+    finally { // Even if an event handler throws, the server stops
+      Seq<ClajConnection> streams = new Seq<>();
+      for (ClajConnection con : connections.values()) {
+        con.clearQueue();
+        if (con.isStream()) streams.add(con);
+      }
+      connections.clear();
+      // Arc's stop closes its connections. The stream relay's close here, and leave the registry once closed.
+      streams.each(c -> {
+        connections.put(c.id, c);
+        c.close();
+      });
+      super.stop();
+    }
   }
 
   /** This doesn't means the server is stopped. */
@@ -812,10 +877,22 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   /** Only closes rooms, connections that are not in a room are kept. */
   public void closeRooms(CloseReason reason) {
     routines.clearCaches((c, r) -> rejectRoomInfo(c, getRoom(r), false));
-    rooms.eachValue(r -> r.close(reason));
+    // Each room is closed even if an event handler throws for another, the first error is thrown after.
+    Throwable error = null;
+    for (ClajRoom r : rooms.values().toSeq()) {
+      try { r.close(reason); }
+      catch (RuntimeException | Error e) { if (error == null) error = e; }
+    }
     rooms.clear();
     types.clear();
     clientsInRooms = 0;
+    rethrow(error);
+  }
+
+  /** Throws an error kept to finish a cleanup first, if any. */
+  public static void rethrow(Throwable error) {
+    if (error instanceof RuntimeException e) throw e;
+    if (error instanceof Error e) throw e;
   }
 
   public void setRoomAfk(ClajRoom room, boolean isAfk) {
@@ -878,8 +955,14 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     LongMap<ClajRoom> rooms = types.remove(type);
     if (rooms == null) return -1;
     int number = rooms.size;
-    rooms.eachValue(r -> closeRoom(r, reason, false));
+    // Each room is closed even if an event handler throws for another, the first error is thrown after.
+    Throwable error = null;
+    for (ClajRoom r : rooms.values().toSeq()) {
+      try { closeRoom(r, reason, false); }
+      catch (RuntimeException | Error e) { if (error == null) error = e; }
+    }
     routines.clearRoomListCache(type);
+    rethrow(error);
     return number;
   }
 
@@ -909,16 +992,18 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     boolean wasHost = con.isRoomHost();
     int clients = room.clients(); // because all clients can be kicked before cleaning cache
 
-    if (quiet) room.disconnectedQuietly(con, reason);
-    else room.disconnected(con, reason);
-
-    // Close the room if it was the host
-    if (!wasHost && !room.isClosed()) {
-      clientsInRooms--;
-      setRoomAfk(room, true);
-    } else {
-      clientsInRooms -= clients;
-      closeRoom(room);
+    try {
+      if (quiet) room.disconnectedQuietly(con, reason);
+      else room.disconnected(con, reason);
+    } finally { // Even if an event handler throws
+      // Close the room if it was the host
+      if (!wasHost && !room.isClosed()) {
+        clientsInRooms--;
+        setRoomAfk(room, true);
+      } else {
+        clientsInRooms -= clients;
+        closeRoom(room);
+      }
     }
     return wasHost;
   }
@@ -928,8 +1013,8 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
     if (room == null) return;
     room.clients.each(routines::clearClientCache);
     clientsInRooms -= room.clients();
-    room.disconnectAllClients(reason, !quiet);
-    setRoomAfk(room, true);
+    try { room.disconnectAllClients(reason, !quiet); }
+    finally { setRoomAfk(room, true); } // Even if an event handler throws
   }
 
   public void setRoomConfiguration(ClajRoom room, boolean isPublic, boolean isProtected, short password,
@@ -1013,20 +1098,27 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   }
 
   /**
-   * Simple packet spam protection.
-   * @return whether the packet is allowed or not. If not, the client will be kicked and the room warned.
+   * Data rate protection, see {@link ClajConfig#clientRate} and {@link ClajConfig#hostRate}.
+   * @return whether the packet is allowed or not. If not, the client will be kicked or the room closed.
    */
-  public boolean checkRateLimit(ClajConnection con) {
+  public boolean checkRateLimit(ClajConnection con, long bytes) {
     if (con == null || !con.isConnected()) return true;
     ClajRoom room = con.currentRoom();
     boolean isHost = room != null && room.isHost(con);
-    int limit = isHost ? ClajConfig.hostSpamLimit.get() * (room.clients()+1) : ClajConfig.spamLimit.get();
-    boolean isRated = limit > 0 && !con.packetRate.allow(3000L, limit);
+    long perSecond = rateOf(room, isHost);
+    if (perSecond > 0) con.rate.refill(System.nanoTime(), perSecond);
+    boolean isRated = perSecond > 0 && !con.rate.take(bytes);
     if (isRated) {
       if (isHost) rejectRateLimitedHost(room);
       else rejectRateLimitedClient(con);
     }
     return !isRated;
+  }
+
+  /** @return the data rate a connection may send, in bytes per second, {@code 0} for no limit. */
+  public static long rateOf(ClajRoom room, boolean isHost) {
+    if (!isHost) return ByteRate.bytesPerSecond(ClajConfig.clientRate.get());
+    return ByteRate.bytesPerSecond(ClajConfig.hostRate.get()) * (room.clients() + 1);
   }
 
   // end region
@@ -1045,7 +1137,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   }
 
   public void rejectRateLimitedClient(ClajConnection connection) {
-    kickClient(connection, "packet spamming");
+    kickClient(connection, "going over its data rate");
   }
 
   /** Kicks a client whose packet would overflow the room host connection. */
@@ -1070,25 +1162,31 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   public void rejectRateLimitedHost(ClajRoom room) {
     if (room == null) return;
     closeRoom(room, CloseReason.spam);
-    warn("Room @ closed for packet spamming.", room.sid);
+    warn("Room @ closed for going over its data rate.", room.sid);
     Events.fire(new HostKickedEvent(room));
   }
 
+  /** A stream relay connection is not closed: it may send another request. */
   public void rejectRoomCreation(ClajConnection connection, CloseReason reason) {
     if (connection == null) return;
     ClajRoom.sendRoomClosed(connection, reason);
     Events.fire(new RoomCreationRejectedEvent(connection, reason));
-    connection.close(); // keep that as compatibility for old versions
+    if (!connection.isStream()) connection.close(); // keep that as compatibility for old versions
   }
 
   public void rejectRoomJoin(ClajConnection connection, ClajRoom room, RejectReason reason) {
     rejectRoomJoin(connection, room, room.id, reason);
   }
+  /** A join refused before its room is looked up, e.g. by the stream relay. */
+  public void rejectRoomJoin(ClajConnection connection, long roomId, RejectReason reason) {
+    rejectRoomJoin(connection, null, roomId, reason);
+  }
+  /** A stream relay connection is not closed: it may send another request. */
   protected void rejectRoomJoin(ClajConnection connection, ClajRoom room, long roomId, RejectReason reason) {
     if (connection == null) return;
     ClajRoom.sendConnectionRejected(connection, room == null ? roomId : room.id, reason);
     Events.fire(new ConnectionJoinRejectedEvent(connection, room, reason));
-    connection.close(); //close?
+    if (!connection.isStream()) connection.close(); //close?
   }
 
   public void acceptJoinRequest(ClajConnection connection, ClajRoom room) {
@@ -1127,11 +1225,18 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
   }
 
   public ClajRoom newRoom(ClajConnection host, ClajType type) {
+    if (host.connection instanceof StreamConnection con) return con.relay.newRoom(newRoomId(), host, type);
     return new ClajRoom(newRoomId(), host, type);
   }
 
   public ClajRoom getRoom(long roomId) {
     return rooms.get(roomId);
+  }
+
+  /** @return the room, if the connection can join it: rooms of the other transport are not found. */
+  public ClajRoom getRoom(ClajConnection connection, long roomId) {
+    ClajRoom room = rooms.get(roomId);
+    return room == null || room.isStream() != connection.isStream() ? null : room;
   }
 
   /** Try to find a room using the base64 encoded id. */

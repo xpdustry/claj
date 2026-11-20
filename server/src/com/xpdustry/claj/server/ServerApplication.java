@@ -29,12 +29,17 @@ import com.xpdustry.claj.server.util.TaskQueue;
 
 public class ServerApplication implements Application {
   protected final MockGraphics graphics;
+  /** Tasks run between two turns of the {@link Waiter}, if any. */
+  public static final int MAX_TASKS_PER_TURN = 1024;
+
   protected final Seq<ApplicationListener> listeners = new Seq<>();
   protected final TaskQueue runnables = new TaskQueue();
   protected final Cons<Throwable> exceptionHandler;
   protected final Thread mainLoopThread;
   protected final int timeout;
   protected boolean running = true;
+  /** Waits for tasks instead of the monitor, doing its own work meanwhile. Only set from the main thread. */
+  protected volatile Waiter waiter;
 
   public ServerApplication(ApplicationListener listener, int nominalFps, Cons<Throwable> exceptionHandler) {
     addListener(listener);
@@ -55,7 +60,12 @@ public class ServerApplication implements Application {
     listeners.each(ApplicationListener::init);
 
     while (running) {
-      if (runnables.size() == 0) {
+      Waiter w = waiter;
+      if (w != null) {
+        // With tasks waiting, a turn without waiting: neither the tasks nor the waiter's work starves the other.
+        if (runnables.size() == 0) w.await(timeout);
+        else w.poll();
+      } else if (runnables.size() == 0) {
         synchronized (runnables) {
           if (runnables.size() == 0) { // Be sure
             try { runnables.wait(timeout); }
@@ -63,7 +73,8 @@ public class ServerApplication implements Application {
           }
         }
       }
-      runnables.run();
+      if (w == null) runnables.run();
+      else runnables.run(MAX_TASKS_PER_TURN);
       graphics.incrementFrameId();
       //defaultUpdate();
       listeners.each(ApplicationListener::update);
@@ -111,9 +122,20 @@ public class ServerApplication implements Application {
   @Override
   public void post(Runnable runnable) {
     if (!runnables.post(runnable)) return;
+    Waiter w = waiter;
+    if (w != null) w.wakeup();
     synchronized (runnables) {
       runnables.notify();
     }
+  }
+
+  /** Sets what the main thread does while waiting for tasks, {@code null} for nothing. Main thread only. */
+  public void setWaiter(Waiter waiter) {
+    this.waiter = waiter;
+  }
+
+  public Waiter getWaiter() {
+    return waiter;
   }
 
   @Override
@@ -124,5 +146,22 @@ public class ServerApplication implements Application {
   /** @return an estimate number of task awaiting to be run. Used for monitoring. */
   public int waitingTasks() {
     return runnables.size();
+  }
+
+  /** @return whether tasks wait to be run, so a {@link Waiter} should return. */
+  public boolean hasTasks() {
+    return runnables.size() > 0;
+  }
+
+  /** Work done by the main thread between tasks, e.g. the stream relay's selector loop. */
+  public interface Waiter {
+    /** Works for up to {@code millis}, returning early once {@link #wakeup()} is called. */
+    void await(long millis);
+
+    /** Does one bounded turn of work without waiting, while tasks are waiting. */
+    void poll();
+
+    /** Called from any thread when a task is posted. */
+    void wakeup();
   }
 }

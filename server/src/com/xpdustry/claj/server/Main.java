@@ -19,6 +19,8 @@
 
 package com.xpdustry.claj.server;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import arc.ApplicationListener;
 import arc.Events;
 import arc.util.Log;
@@ -26,6 +28,7 @@ import arc.util.Log;
 import com.xpdustry.claj.common.ClajPackets;
 import com.xpdustry.claj.common.status.ClajVersion;
 import com.xpdustry.claj.server.plugin.Plugins;
+import com.xpdustry.claj.server.stream.StreamRelay;
 import com.xpdustry.claj.server.util.Autosaver;
 
 
@@ -85,7 +88,20 @@ public class Main implements ApplicationListener {
 
     app.addListener(ClajVars.control = new ClajControl());
     app.addListener(ClajVars.plugins = new Plugins(ClajVars.pluginsDirectory, ClajVars.control));
-    app.addListener(ClajVars.relay = new ClajRelay(ClajVars.port, true));
+    // The stream relay is the server transport. The ClajRelay instance supplies the
+    // shared room and control-plane implementation without opening a second listener.
+    ClajVars.relay = new ClajRelay(0, true);
+    String address = ClajConfig.bindAddress.get();
+    try {
+      ClajVars.stream = new StreamRelay(ClajVars.relay, address.isEmpty()
+        ? new java.net.InetSocketAddress(ClajVars.port)
+        : new java.net.InetSocketAddress(address, ClajVars.port));
+    } catch (IOException e) {
+      throw new UncheckedIOException("Unable to bind the stream relay on port " + ClajVars.port, e);
+    }
+    // Dispose the stream transport before its shared control plane.
+    app.addListener(ClajVars.stream);
+    app.addListener(ClajVars.relay);
 
     app.post(() -> {
       isLoading = false;
