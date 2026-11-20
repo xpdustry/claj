@@ -2,7 +2,7 @@
 
 The wire protocol of the server's stream relay. Constants are in
 [`StreamProtocol.java`](../server/src/com/xpdustry/claj/server/stream/StreamProtocol.java).
-All integers are big-endian. TCP and UDP share one port, separate from 2.4.x (`stream-port`, off by default).
+All integers are big-endian. TCP and UDP share the server's command-line port.
 
 Every connection goes through three stages:
 
@@ -244,7 +244,7 @@ Timeouts are in seconds, as the 2.x ones.
 
 | Key | Default | Effect |
 |---|---|---|
-| `stream-port` | 0 (off) | the relay's port, TCP and UDP; `bind-address` (default: every interface) binds both servers |
+| command-line port | required | the relay's port, TCP and UDP; `bind-address` (default: every interface) binds both servers |
 | `register-timeout` (*shared*) | 5 s | stage 1 deadline from accept, as Arc's registration in 2.x; the token expires with it (0: `control-timeout` only) |
 | `control-timeout` | 30 s | absolute deadline of stages 1+2, not reset by activity; it caps the stage 1 deadline too |
 | `linger-timeout` | 5 s | time to flush queued bytes and wait for the peer's EOF after a close |

@@ -17,7 +17,7 @@ against the current build (`01cb4e1`) on a dedicated Boat VM.
 **Since v7 (`feat/stream-relay-clean`)**: io_uring left libclaj again (stream-relay.md, "io_uring: assessed and
 dropped"), and so did `TCP_INFO` and `getpid`, which nothing in the relay called: `TCP_INFO` was kept "unwired"
 below, and `getpid` only served `NativeCallBench`, removed with the JNA and FFM backends. libclaj is now the two
-UDP calls and the int socket options: `claj.c` 31 lines, `claj.h` 20, `claj_jni.c` 51, a `.so` of **4,408-4,736 B**
+UDP calls, socket options, and their JNI binding are in `claj.c`, a `.so` of **4,408-4,736 B**
 per target (zig 0.17.1). The sections below describe the round as it was measured; the removed code is in git at
 `11c7e38`.
 
@@ -25,7 +25,7 @@ per target (zig 0.17.1). The sections below describe the round as it was measure
 
 | Item | Result | Keep? |
 |---|---|---|
-| 1. C core + JNI glue | 39 + 22 lines of plain C (`claj.c`, `claj.h`), 63 lines of JNI glue; `.so` **4,960-5,272 B** per target, 1.7-1.9 KB deflated; the `claj-native` jar is 12,259 B with all four | **keep** |
+| 1. C core + JNI glue | one source file containing the plain C calls and JNI glue; `.so` **4,960-5,272 B** per target, 1.7-1.9 KB deflated | **keep** |
 | 2. zig cross builds | x86_64 and aarch64, glibc (2.14+ / 2.17+) and musl, all from this x86_64 host; all four load; x86_64 musl passes 19/19 in an Alpine chroot, aarch64 17/19 under qemu-user, both failures qemu's (section 2) | **keep** |
 | 3a. `TCP_NOTSENT_LOWAT` | a client that doesn't read leaves **64,407 B → 16,151 B** (16 KiB) or **4,055 B** (4 KiB) in the relay's kernel send queue; no measurable cost on loads A and B | **keep, 16 KiB default** |
 | 3b. keepalive on Java 8, random idle | at the default `netdev_max_backlog=1000`, keepalive aborts **922 and 1,257 → 0 and 0** with idle 10-15 s per socket; delivery 68-73% → 86.7% (the pause only) | **keep, 50% spread default** |
@@ -36,15 +36,12 @@ per target (zig 0.17.1). The sections below describe the round as it was measure
 
 ```
 claj-native/
-  native/claj.h       the C API, no JNI types: claj_recvmmsg, claj_sendmmsg, claj_setsockopt_int,
-                      claj_getsockopt_int, claj_tcp_info
-  native/claj.c       the calls, each a count or 0, or -errno, retrying EINTR
-  native/claj_jni.c   one forwarding function per call, registered from JNI_OnLoad (the only exported symbol)
+  native/claj.c       the C calls and JNI binding, registered from JNI_OnLoad (the only exported symbol)
   src/.../natives/LibClaj.java   the Java 8 side: loads linux-<arch>-<gnu|musl>/libclaj.so from the jar
 ```
 
-- **A future libclaj in other languages** can compile `claj.c` with `claj.h` as they are: there is no Java in them.
-  The JNI file passes native addresses as `jlong` and returns the C results unchanged.
+- **A future libclaj in other languages** can use the C functions in `claj.c`; the JNI section passes native
+  addresses as `jlong` and returns the C results unchanged.
 - **What changed for the relay**: `Mmsg` became `LibClaj` (the same two UDP calls, now `recvmmsg`/`sendmmsg`), and
   `BatchedDatagrams.descriptor` moved to `Sockets`, which also holds the TCP socket options. `JniUdp` forwards to
   `LibClaj`. Nothing else in the relay moved.
@@ -375,7 +372,7 @@ issues, each reproduced; all are fixed:
 4. **The machine**: not last round's (section "Measurements"); load A ran at 10k/s. A rerun on an EPYC 9xx5 host
    at A's 20k/s would tie this round to the last.
 5. **The io_uring lane** adds its own C file to `udp-mmsg/native/` on its branch from `01cb4e1`. On merge, it
-   moves to `claj-native/native/`, and its natives join the table in `claj_jni.c` (one library, one
+   moves to `claj-native/native/`, and its natives join the table in `claj.c` (one library, one
    `JNI_OnLoad`), or it builds its own library.
 6. **The FFM and JNA bindings** only have the two UDP calls; without libclaj (no JNI library for the platform), the
    keepalive delays fall back to `jdk.net`'s options and the low-water mark isn't set.

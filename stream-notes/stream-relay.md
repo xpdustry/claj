@@ -10,7 +10,7 @@ Java 8 bytecode (jabel, `--release 8`), tested on Java 8 (Temurin 1.8.0_512) and
 
 ```sh
 ./gradlew :server:release                  # build/release/claj-server.jar, libclaj inside with zig (-Pzig=...) or gcc
-echo '{"stream-port": 7001}' > config.json && java -jar claj-server.jar 7000   # 2.x on 7000, the stream relay on 7001
+java -jar claj-server.jar 7000   # TCP and UDP stream relay on 7000
 ./gradlew :server:checkRelay [-PtestJava=/path/to/java8/bin/java] [-Pchecks=name,name] [-Pudp=off|jni]
 ./gradlew :server:checkUdpBackends [-PtestJava=...]  # the datagram checks with Java's UDP, then libclaj's
 ./gradlew :bench:release                   # claj-bench --server claj-server.jar --stream, see Benchmarks
@@ -35,7 +35,7 @@ fd map, `HashMap` nodes and an iterator for the selected keys), for 1-2 young GC
 | `StreamProtocol` | 156 | named constants, and the stage 2 type of each `common` reply packet |
 | `Datagrams`, `BatchedDatagrams`, `PeerMap` | 118, 240, 150 | the UDP socket: Java's `DatagramChannel`, or `recvmmsg`/`sendmmsg` batches through libclaj on Linux; connections by UDP address. See [udp-batching.md](udp-batching.md) |
 | `Sockets`, `LibClaj` | 99, 147 | TCP options beyond Java's through libclaj: keepalive delays with a random idle, `TCP_NOTSENT_LOWAT`. See [native.md](native.md) |
-| `server/native`: `claj.c`/`claj.h`/`claj_jni.c` | 31/20/51 | libclaj, the JNI library for the calls Java lacks, built by `:server:compileNative` |
+| `server/native/claj.c` | 75 | libclaj and its JNI binding for the calls Java lacks, built by `:server:compileNative` |
 
 In `server/test`: `RelayChecks` (the checks, which boot the server in-process as `Main` does, its 2.x port on the
 loopback), and `StreamClient`, `HostMux` (blocking peer helpers: hello and stage 2, the plain `Socket` back; host frames),
@@ -718,13 +718,13 @@ Older sections keep the names of their time.
 The maintainer: "why your not reusing existing classes from server/ ? modify directly the server/ classes to add
 your changes, reuse the classes and use as much as possible arc api". So the `stream-relay` and `claj-native`
 modules are gone: the relay is a feature of `server`, in `com.xpdustry.claj.server.stream`, started by `Main` next
-to `ClajRelay` when `stream-port` is set.
+to `ClajRelay`, which supplies the shared control plane without opening another listener.
 
 ### What reuses what
 
 | Before (v7) | Now | Notes |
 |---|---|---|
-| `StreamConfig` + `-Dstream.*` | `ClajConfig` fields, same kebab-case keys | autosave, `config` console command and `config reload` for free; each field checks its values (see "Config validation"). `max-connections`, `max-rooms`, `connection-limit` and `client-limit` are the 2.x fields, counting both transports. `slice-size`, `host-queue-size`, `memory-budget`, `udp-batching` and `stream-port` are read at start |
+| `StreamConfig` + `-Dstream.*` | `ClajConfig` fields, same kebab-case keys | autosave, `config` console command and `config reload` for free; each field checks its values (see "Config validation"). `max-connections`, `max-rooms`, `connection-limit` and `client-limit` apply to the relay. `slice-size`, `host-queue-size`, `memory-budget` and `udp-batching` are read at start |
 | `StreamRoom` | `StreamRoom extends ClajRoom` | in `ClajRelay.rooms` and `types`; membership, events, AFK, `close` commands are `ClajRoom`'s and `ClajRelay`'s. The mux, ready queue and streams by conId stay, through two new `ClajRoom` hooks (`notifyJoined`, `notifyLeft`) and its existing `setRoom`/`removeRoom` |
 | `StreamConnection` | `StreamConnection extends arc.net.Connection`, wrapped by a `ClajConnection` | in `ClajRelay.connections` from accept until closed; ids are unique across both transports (see "Ids") |
 | `StreamControl`'s decisions | `ClajRelay`'s handlers | `onRoomCreate`, `onRoomJoin` (as a join request, then `addClient`), `onInfoRequest`, `onRoomConfig`, `onRoomState`, `onConClose`, `closeRoom`; `StreamControl` keeps what only the stream has: budget, pipelining, UDP, the room list in one message |
@@ -733,7 +733,7 @@ to `ClajRelay` when `stream-port` is set.
 | `setConnectFilter` | `ClajRelay`'s filter | the blacklist of the 2.x port refuses stream connections too |
 | logging | the server's formatter, `ClajRelay`'s log lines | the 2.x log lines (room created, joined, left, closed) appear for stream rooms; the relay's own go through `StreamRelay.info`/`warn`, which honour `beQuiet` as `ClajRelay`'s protected ones do |
 | room ids | `ClajRelay.newRoomId()` | one id space; a 2.x client can't see or join a stream room and the other way round (`ClajRelay.getRoom(connection, id)`) |
-| `claj-native` | `server/native`, `:server:compileNative` | the JNI class moved, so `claj_jni.c` registers `com/xpdustry/claj/server/stream/LibClaj` |
+| `claj-native` | `server/native`, `:server:compileNative` | `claj.c` registers `com/xpdustry/claj/server/stream/LibClaj` |
 
 Changes in `server` outside the new package, additive for 2.x (methods only added, none widened):
 `ClajConfig` (17 fields for the relay, and `bind-address`; `Field.check`/`range`, which the 2.x fields don't use),

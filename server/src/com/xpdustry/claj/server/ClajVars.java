@@ -38,7 +38,7 @@ public class ClajVars {
   protected static final Object[] empty = {};
 
   public static ClajRelay relay;
-  /** {@code null} if {@link ClajConfig#streamPort} is {@code 0}. */
+  /** The stream transport, which is the server's only network listener. */
   public static StreamRelay stream;
   public static ClajControl control;
 

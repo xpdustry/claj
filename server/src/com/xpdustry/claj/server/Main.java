@@ -21,8 +21,6 @@ package com.xpdustry.claj.server;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.InetSocketAddress;
-
 import arc.ApplicationListener;
 import arc.Events;
 import arc.util.Log;
@@ -90,19 +88,20 @@ public class Main implements ApplicationListener {
 
     app.addListener(ClajVars.control = new ClajControl());
     app.addListener(ClajVars.plugins = new Plugins(ClajVars.pluginsDirectory, ClajVars.control));
-    app.addListener(ClajVars.relay = new ClajRelay(ClajVars.port, true));
-    int streamPort = ClajConfig.streamPort.get();
-    // The stream relay changes the rooms from the main thread, as ClajRelay only does with dual-thread.
-    if (streamPort > 0 && !ClajConfig.dualThread.get()) {
-      Log.err("The stream relay needs dual-thread to be enabled, it will not be started.");
-    } else if (streamPort > 0) {
-      String address = ClajConfig.bindAddress.get();
-      InetSocketAddress bind = address.isEmpty() ? new InetSocketAddress(streamPort) :
-                               new InetSocketAddress(address, streamPort);
-      try { ClajVars.stream = new StreamRelay(ClajVars.relay, bind); }
-      catch (IOException e) { throw new UncheckedIOException("Unable to bind the stream relay on port " + streamPort, e); }
-      app.addListener(ClajVars.stream);
+    // The stream relay is the server transport. The ClajRelay instance supplies the
+    // shared room and control-plane implementation without opening a second listener.
+    ClajVars.relay = new ClajRelay(0, true);
+    String address = ClajConfig.bindAddress.get();
+    try {
+      ClajVars.stream = new StreamRelay(ClajVars.relay, address.isEmpty()
+        ? new java.net.InetSocketAddress(ClajVars.port)
+        : new java.net.InetSocketAddress(address, ClajVars.port));
+    } catch (IOException e) {
+      throw new UncheckedIOException("Unable to bind the stream relay on port " + ClajVars.port, e);
     }
+    // Dispose the stream transport before its shared control plane.
+    app.addListener(ClajVars.stream);
+    app.addListener(ClajVars.relay);
 
     app.post(() -> {
       isLoading = false;

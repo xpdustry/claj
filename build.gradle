@@ -161,12 +161,12 @@ project(":server") {
      "aarch64-musl": "aarch64-linux-musl"].collectEntries { k, v -> [k, [zig, "cc", "-target", v]] } :
     System.getProperty("os.name") == "Linux" && works(["gcc", "--version"]) ?
     [("${arch}-${libc}".toString()): ["gcc", "-Wl,-z,noseparate-code"]] : [:]
-  def sources = files("native/claj.c", "native/claj_jni.c")
+  def sources = files("native/claj.c")
   def outDir = layout.buildDirectory.dir("native")
 
   task compileNative {
     def jdk = System.getProperty("java.home")
-    inputs.files sources, file("native/claj.h")
+    inputs.files sources
     inputs.property "targets", targets.collect { k, v -> k + v.join(" ") }
     outputs.dir outDir
     doLast {

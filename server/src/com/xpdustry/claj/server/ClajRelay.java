@@ -751,7 +751,7 @@ public class ClajRelay extends Server implements ApplicationListener, NetListene
 
   @Override
   public void init() {
-    Events.on(ClajEvents.ServerLoadedEvent.class, _ -> host(port));
+    if (port > 0) Events.on(ClajEvents.ServerLoadedEvent.class, _ -> host(port));
   }
 
   /** At this point it's too late to notify closure. */

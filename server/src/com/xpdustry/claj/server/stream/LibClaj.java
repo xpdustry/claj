@@ -30,7 +30,7 @@ import java.util.Locale;
 
 
 /**
- * The Linux system calls the relay needs and Java lacks, through libclaj ({@code native/claj.h}), a small JNI
+ * The Linux system calls the relay needs and Java lacks, through libclaj ({@code native/claj.c}), a small JNI
  * library packed in this jar and loaded on first use. Calls return a count, a value or {@code 0}, or
  * {@code -errno}. Unavailable on other systems: the caller keeps its pure Java path.
  */
