@@ -19,6 +19,10 @@
 
 package com.xpdustry.claj.server;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.InetSocketAddress;
+
 import arc.ApplicationListener;
 import arc.Events;
 import arc.util.Log;
@@ -26,6 +30,7 @@ import arc.util.Log;
 import com.xpdustry.claj.common.ClajPackets;
 import com.xpdustry.claj.common.status.ClajVersion;
 import com.xpdustry.claj.server.plugin.Plugins;
+import com.xpdustry.claj.server.stream.StreamRelay;
 import com.xpdustry.claj.server.util.Autosaver;
 
 
@@ -86,6 +91,18 @@ public class Main implements ApplicationListener {
     app.addListener(ClajVars.control = new ClajControl());
     app.addListener(ClajVars.plugins = new Plugins(ClajVars.pluginsDirectory, ClajVars.control));
     app.addListener(ClajVars.relay = new ClajRelay(ClajVars.port, true));
+    int streamPort = ClajConfig.streamPort.get();
+    // The stream relay changes the rooms from the main thread, as ClajRelay only does with dual-thread.
+    if (streamPort > 0 && !ClajConfig.dualThread.get()) {
+      Log.err("The stream relay needs dual-thread to be enabled, it will not be started.");
+    } else if (streamPort > 0) {
+      String address = ClajConfig.bindAddress.get();
+      InetSocketAddress bind = address.isEmpty() ? new InetSocketAddress(streamPort) :
+                               new InetSocketAddress(address, streamPort);
+      try { ClajVars.stream = new StreamRelay(ClajVars.relay, bind); }
+      catch (IOException e) { throw new UncheckedIOException("Unable to bind the stream relay on port " + streamPort, e); }
+      app.addListener(ClajVars.stream);
+    }
 
     app.post(() -> {
       isLoading = false;

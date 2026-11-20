@@ -31,12 +31,15 @@ import arc.net.ArcNet;
 import arc.util.*;
 import com.xpdustry.claj.common.status.ClajVersion;
 import com.xpdustry.claj.server.plugin.Plugins;
+import com.xpdustry.claj.server.stream.StreamRelay;
 
 
 public class ClajVars {
   protected static final Object[] empty = {};
 
   public static ClajRelay relay;
+  /** {@code null} if {@link ClajConfig#streamPort} is {@code 0}. */
+  public static StreamRelay stream;
   public static ClajControl control;
 
   public static int port = 7000;

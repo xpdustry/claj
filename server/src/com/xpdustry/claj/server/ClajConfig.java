@@ -115,6 +115,9 @@ public class ClajConfig {
     protected final T defaultValue;
     public final Class<T> type;
     protected Cons<T> changed;
+    /** Values the field accepts, {@code null} for any of its type, and their description. See {@link #check}. */
+    protected Boolf<T> validator;
+    protected String rule;
     protected T value;
     protected boolean loaded, modified;
 
@@ -144,6 +147,41 @@ public class ClajConfig {
       return loaded;
     }
 
+    /**
+     * Restricts the values: {@link #set} and {@link #decode} refuse the others, {@link #reload} keeps the
+     * current value instead of one of them.
+     * @param rule describes the valid values, for the errors.
+     * @return this field.
+     */
+    public Field<T> check(String rule, Boolf<T> validator) {
+      this.rule = rule;
+      this.validator = validator;
+      return this;
+    }
+
+    /** {@link #check} of a number: from {@code min} to {@code max}, which can be the type's maximum. */
+    public Field<T> range(long min, long max) {
+      return check(max >= Integer.MAX_VALUE ? "must be at least " + min : "must be from " + min + " to " + max,
+                   v -> ((Number)v).longValue() >= min && ((Number)v).longValue() <= max);
+    }
+
+    /** {@link #check} of a number: above {@code 0}, up to a day for seconds. */
+    public Field<T> positive() {
+      return check("must be above 0 and at most 86400", v -> ((Number)v).doubleValue() > 0 &&
+                                                            ((Number)v).doubleValue() <= 86400);
+    }
+
+    /** @return whether the value passes {@link #check}. */
+    public boolean valid(T value) {
+      return validator == null || validator.get(value);
+    }
+
+    /** @throws IllegalArgumentException if the value doesn't pass {@link #check}. */
+    protected T checkValid(T value) {
+      if (!valid(value)) throw new IllegalArgumentException("Invalid value " + value + " for " + name() + ", " + rule);
+      return value;
+    }
+
     public boolean modified() {
       return modified;
     }
@@ -170,7 +208,12 @@ public class ClajConfig {
     public void reload() {
       if (settings == null || !settings.loaded())
         throw new IllegalStateException("Settings are not initialized");
-      value = checkValue(loadValue(), type, false);
+      T read = checkValue(loadValue(), type, false);
+      if (valid(read)) value = read;
+      else {
+        if (!loaded) value = getDefault();
+        Log.err("Invalid value @ for @, @: kept @.", read, name(), rule, value);
+      }
       loaded = true;
       modified = false;
     }
@@ -203,7 +246,7 @@ public class ClajConfig {
     }
 
     public void set(T value) {
-      this.value = checkValue(value, type, false);
+      this.value = checkValid(checkValue(value, type, false));
       notifyChange();
     }
 
@@ -248,7 +291,9 @@ public class ClajConfig {
      * @throws IllegalArgumentException if decoding failed, or decoded type is not the same.
      */
     public T decode(String value) throws IllegalArgumentException {
-      return parse(value, type, this::decodeValue);
+      T decoded = parse(value, type, this::decodeValue);
+      if (!valid(decoded)) throw new IllegalArgumentException(rule);
+      return decoded;
     }
 
     protected <V> V parse(String value, Class<V> type, Func<String, V> jsonDecoder)
@@ -346,13 +391,13 @@ public class ClajConfig {
       """.trim(),
       "Maximum number of clients allowed per room. Set to &lb0&lw to disable.",
       """
-      Limit for packet count sent within 3 sec that will lead to a disconnect.
-      Ignored for room hosts. Set to &lb0&lw to disable.
+      Data rate a client may send. (in MB/s, 1 MB = 1,000,000 bytes, with a burst of 3 seconds)
+      The stream relay slows the client down, a 2.x client is kicked. A 2.x packet counts as 1 KB at least.
+      Set to &lb0&lw to disable.
       """.trim(),
       """
-      Limit for packet count sent within 3 sec, and per client, that will lead to a room closure.
-      In theory x30-50 bigger than the normal limit, because a room host can send a lot of packets.
-      Set to &lb0&lw to disable.
+      Data rate a room host may send, for each client of its room and itself. (in MB/s, like client-rate)
+      The stream relay slows the host down, a 2.x room is closed. Set to &lb0&lw to disable.
       """.trim(),
       """
       Limit of room join requests per minute per ip address.
@@ -417,7 +462,36 @@ public class ClajConfig {
       &fiWARNING: this is currently experimental, setting this to false can break things.&fr
       """.trim(),
       "IP Address Blacklist.",
-      "CLaJ Type Blacklist."
+      "CLaJ Type Blacklist.",
+      "Address to bind the server ports to, every interface if empty. (needs a restart to take effect)",
+      """
+      Port of the stream relay, TCP and UDP, next to the 2.x one. (needs a restart to take effect)
+      It uses max-connections, connection-limit, max-rooms, client-limit and the rate limits too.
+      Set to &lb0&lw to disable.
+      """.trim(),
+      """
+      Stream relay: bytes it may commit to queues. Set to &lb0&lw for half the maximum heap.
+      (needs a restart to take effect)
+      """.trim(),
+      "Stream relay: deadline to create or join a room, since the connection. (in seconds)",
+      "Stream relay: time given to a closing connection to flush its queued bytes. (in seconds)",
+      """
+      Stream relay: closes a client or host from which nothing was received for this long. (in seconds)
+      Set to &lb0&lw to disable.
+      """.trim(),
+      """
+      Stream relay: TCP keepalive idle time, drawn up to 50% above per socket, then 3 probes at half of it.
+      (in seconds) Set to &lb0&lw to disable keepalive.
+      """.trim(),
+      "Stream relay: requests before a connection is closed, refused or not.",
+      """
+      Stream relay: largest data frame sent in one turn of a stream, at most 65535. 16384 suits bulk transfers.
+      A host's queue holds 4 of them before its streams wait for their turn. (needs a restart to take effect)
+      """.trim(),
+      """
+      Stream relay: batched UDP system calls through libclaj. (needs a restart to take effect)
+      Possible values: &lboff&lw, &lbauto&lw, or &lbjni&lw to warn when unavailable.
+      """.trim()
   ).reverse();
 
   /** Must be set at initialization and not modified after. {@code -1} means not initialized. */
@@ -432,8 +506,8 @@ public class ClajConfig {
   public static Field<Integer> maxRooms = new Field<>("max-rooms", fieldDescs.pop(), 1<<16);
   public static Field<Integer> roomLimit = new Field<>("room-limit", fieldDescs.pop(), 16);
   public static Field<Integer> clientLimit = new Field<>("client-limit", fieldDescs.pop(), 1<<7);
-  public static Field<Integer> spamLimit = new Field<>("spam-limit", fieldDescs.pop(), 1<<8);
-  public static Field<Integer> hostSpamLimit = new Field<>("host-spam-limit", fieldDescs.pop(), 1<<14);
+  public static Field<Float> clientRate = new Field<>("client-rate", fieldDescs.pop(), 2f).range(0, 100_000);
+  public static Field<Float> hostRate = new Field<>("host-rate", fieldDescs.pop(), 2f).range(0, 100_000);
   public static Field<Integer> joinLimit = new Field<>("join-limit", fieldDescs.pop(), 32);
   public static Field<Integer> infoLimit = new Field<>("info-limit", fieldDescs.pop(), 32);
   public static Field<Integer> listLimit = new Field<>("list-limit", fieldDescs.pop(), 32);
@@ -453,6 +527,19 @@ public class ClajConfig {
   public static Field<Boolean> dualThread = new Field<>("dual-thread", fieldDescs.pop(), true);
   public static SetField<String> blacklist = new SetField<>("blacklist", fieldDescs.pop(), String.class);
   public static SetField<ClajType> typeBlacklist = new SetField<>("type-blacklist", fieldDescs.pop(), ClajType.class);
+  public static Field<String> bindAddress = new Field<>("bind-address", fieldDescs.pop(), "");
+  public static Field<Integer> streamPort = new Field<>("stream-port", fieldDescs.pop(), 0).range(0, 65535);
+  public static Field<Long> memoryBudget = new Field<>("memory-budget", fieldDescs.pop(), 0L)
+    .range(0, Long.MAX_VALUE);
+  public static Field<Float> controlTimeout = new Field<>("control-timeout", fieldDescs.pop(), 30f).positive();
+  public static Field<Float> lingerTimeout = new Field<>("linger-timeout", fieldDescs.pop(), 5f).positive();
+  public static Field<Float> idleTimeout = new Field<>("idle-timeout", fieldDescs.pop(), 12f).range(0, 86400);
+  public static Field<Integer> keepAlive = new Field<>("keep-alive", fieldDescs.pop(), 10).range(0, 21844);
+  public static Field<Integer> maxRequests = new Field<>("max-requests", fieldDescs.pop(), 32)
+    .range(1, Integer.MAX_VALUE);
+  public static Field<Integer> sliceSize = new Field<>("slice-size", fieldDescs.pop(), 4 * 1024).range(1, 65535);
+  public static Field<String> udpBatching = new Field<>("udp-batching", fieldDescs.pop(), "auto")
+    .check("must be off, auto or jni", v -> v.equals("off") || v.equals("auto") || v.equals("jni"));
 
   static { fieldDescs = null; } // remove cached desc fields
 }
