@@ -138,7 +138,7 @@ public class ClajRoom implements NetListener {
     setRoom(connection); // Will check host
     clientsMap.put(connection.id, connection);
     clients.add(connection);
-    sendConnectionJoined(host, connection);
+    notifyJoined(connection);
     if (closed) return false; // In case of the host connection is broken
     Events.fire(new ConnectionJoinedEvent(connection, this));
     return true;
@@ -156,17 +156,27 @@ public class ClajRoom implements NetListener {
     if (closed || connection == null/* || !connection.isConnected()*/) return;
 
     if (isHost(connection) || !host.isConnected()) {
-      Events.fire(new ConnectionLeftEvent(connection, this));
-      close();
+      try { Events.fire(new ConnectionLeftEvent(connection, this)); }
+      finally { close(); }
       return;
     }
 
     removeRoom(connection);
     clients.remove(connection);
     boolean removed = clientsMap.remove(connection.id) != null;
-    sendDisconnect(host, connection.id, reason);
+    notifyLeft(connection, reason);
     // In case of the event is received twice
     if (removed) Events.fire(new ConnectionLeftEvent(connection, this));
+  }
+
+  /** Tells the host that a client joined. */
+  protected void notifyJoined(ClajConnection connection) {
+    sendConnectionJoined(host, connection);
+  }
+
+  /** Tells the host that a client left. */
+  protected void notifyLeft(ClajConnection connection, DcReason reason) {
+    sendDisconnect(host, connection.id, reason);
   }
 
   /** Doesn't notify the room host about a disconnected client. */
@@ -180,32 +190,36 @@ public class ClajRoom implements NetListener {
     if (closed || connection == null/* || !connection.isConnected()*/) return;
 
     if (isHost(connection) || !host.isConnected()) {
-      Events.fire(new ConnectionLeftEvent(connection, this));
-      close();
+      try { Events.fire(new ConnectionLeftEvent(connection, this)); }
+      finally { close(); }
     } else {
       removeRoom(connection);
       clients.remove(connection);
       // To avoid double fire if event is received twice
-      if (clientsMap.remove(connection.id) != null)
-        Events.fire(new ConnectionLeftEvent(connection, this));
-      connection.close(reason == null ? DcReason.closed : reason);
+      try {
+        if (clientsMap.remove(connection.id) != null)
+          Events.fire(new ConnectionLeftEvent(connection, this));
+      } finally { connection.close(reason == null ? DcReason.closed : reason); } // Even if an event handler throws
     }
   }
 
-  /** Close all connections of the room. */
+  /** Close all connections of the room. If an event handler throws, the others are closed first. */
   public void disconnectAllClients(DcReason reason, boolean notify) {
     //if (closed) return;
 
-    clients.each(c -> {
+    Throwable error = null;
+    for (int i=0; i<clients.size; i++) {
+      ClajConnection c = clients.get(i);
       removeRoom(c);
-      Events.fire(new ConnectionLeftEvent(c, this));
+      try { Events.fire(new ConnectionLeftEvent(c, this)); }
+      catch (RuntimeException | Error e) { if (error == null) error = e; }
       c.close();
-    });
+    }
     clients.clear();
     clientsMap.clear();
 
-    if (!notify || !host.isConnected()) return;
-    sendDisconnect(host, CON_BROADCAST, reason);
+    if (notify && host.isConnected()) sendDisconnect(host, CON_BROADCAST, reason);
+    ClajRelay.rethrow(error);
   }
 
   /**
@@ -333,6 +347,11 @@ public class ClajRoom implements NetListener {
     return clientsMap.size;
   }
 
+  /** @return whether the room is hosted by a stream relay connection. */
+  public boolean isStream() {
+    return host.isStream();
+  }
+
   /** @return whether the room is created or not. */
   public boolean isCreataed() {
     return created;
@@ -377,12 +396,14 @@ public class ClajRoom implements NetListener {
     closedAt = Time.millis();
 
     // Notify the reason to the host
-    if (notify && host.isConnected()) sendRoomClosed(host, reason);
-    Events.fire(new RoomClosedEvent(this));
-
-    removeRoom(host);
-    host.close();
-    disconnectAllClients(DcReason.closed, false);
+    try {
+      if (notify && host.isConnected()) sendRoomClosed(host, reason);
+      Events.fire(new RoomClosedEvent(this));
+    } finally { // Even if an event handler throws
+      removeRoom(host);
+      host.close();
+      disconnectAllClients(DcReason.closed, false);
+    }
   }
 
   /** Same as {@link #close()}, but doesn't notify closure to host. */
@@ -516,7 +537,8 @@ public class ClajRoom implements NetListener {
 
   /** @return whether the connection is in this room. */
   public boolean containsClient(Connection con) {
-    return clientsMap.containsKey(con.getID());
+    ClajConnection client = clientsMap.get(con.getID());
+    return client != null && client.connection == con; // Not only the id: see ClajRelay#onConnect()
   }
 
 

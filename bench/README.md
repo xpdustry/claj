@@ -26,6 +26,16 @@ java -jar claj-bench.jar compare \
   --server claj-server.jar --label 2.4.5-mono --set dual-thread=false
 ```
 
+The server's stream relay (see `stream-notes/`) is benched with `--stream` after its `--server`: the bench's port is
+then the relay's `stream-port`, the 2.x port the next one. Its settings are `ClajConfig` keys too, e.g.
+`--set slice-size=16384`.
+The bench turns the relay's `idle-timeout` off, as its stream hosts don't send `PING`. Broadcast flows are not supported with it, nor UDP payloads
+above 4,096 B (the relay drops them by design): such runs are skipped. Differences with the 2.x paths:
+- a stream host has a read buffer of at least 65,542 B (one whole mux frame), against 32 KiB for 2.x hosts;
+- a stream host keeps a send its stream's credit can't cover (up to 1 MiB per stream) and sends it when credit
+  comes back, as a real host would, so a credit wait shows as latency, not as a blocked send;
+- `relayed/s` counts deliveries of both echo legs: with losses, `relayed/s ÷ 2` isn't the completed echoes.
+
 `--set` changes a value of the server `config.json`. The per-address limits are disabled, because every bench
 connection comes from the same IP.
 
@@ -71,3 +81,8 @@ taskset -c 2-7 java -jar claj-bench.jar compare --server-cpus 0-1 --threads 6 ..
 - **Pterodactyl**: prefer CPU pinning to a CPU limit, as a limit creates fake latency spikes.
 - **Two machines**: about 120 bytes per relayed packet and per direction, so the network can limit before the server.
 - **Thousands of connections**: raise `ulimit -n` and `net.ipv4.ip_local_port_range`, and prefer Linux to Windows.
+- **UDP clients on loopback for more than ~25 s**: raise `net.core.netdev_max_backlog` (e.g. to 16384). The bench's
+  UDP clients send nothing over TCP, so the stream relay's TCP keepalive probes them all at once; on loopback, the
+  probes and their answers overflow the default backlog of 1,000 packets, and after 3 lost rounds (10 s + 3 × 5 s)
+  the kernel drops the connections, unseen by the bench, whose datagrams are then dropped as unknown
+  (`stream-notes/udp-batching.md`).

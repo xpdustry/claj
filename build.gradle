@@ -134,6 +134,9 @@ project(":server") {
   jar {
     manifest.attributes["Main-Class"] = project.mainClassName
     manifest.attributes["Claj-Version"] = metadata.version
+    // libclaj, for the stream relay, needs the sockets' descriptors (JDK 9+) and native access (JDK 24+ warns without)
+    manifest.attributes["Add-Opens"] = "java.base/sun.nio.ch"
+    manifest.attributes["Enable-Native-Access"] = "ALL-UNNAMED"
     //TODO: use arc-lite
     //exclude "arc/graphics/**", "arc/math/geom/**", "arc/net/dns/**", "arc/util/noise/**"
   }
@@ -146,6 +149,86 @@ project(":server") {
     args 7000 // default port
     jvmArgs "-DClaj-Version=${metadata.version}" // claj version
   }
+
+  // libclaj, the Linux system calls Java lacks, for the stream relay. Built with zig (-Pzig=/path/to/zig) for x86_64
+  // and aarch64, glibc and musl, else with gcc for this machine only, else not at all: the relay keeps its Java paths.
+  def arch = System.getProperty("os.arch") == "amd64" ? "x86_64" : System.getProperty("os.arch")
+  def libc = new File("/lib").listFiles()?.any { it.name.startsWith("ld-musl-") } ? "musl" : "gnu"
+  def works = { List<String> command -> try { command.execute().waitFor() == 0 } catch (IOException ignored) { false } }
+  def zig = findProperty("zig") ?: ["sh", "-c", "command -v zig || true"].execute().text.trim()
+  def targets = zig && works([zig, "version"]) ?
+    ["x86_64-gnu": "x86_64-linux-gnu.2.17", "aarch64-gnu": "aarch64-linux-gnu.2.17", "x86_64-musl": "x86_64-linux-musl",
+     "aarch64-musl": "aarch64-linux-musl"].collectEntries { k, v -> [k, [zig, "cc", "-target", v]] } :
+    System.getProperty("os.name") == "Linux" && works(["gcc", "--version"]) ?
+    [("${arch}-${libc}".toString()): ["gcc", "-Wl,-z,noseparate-code"]] : [:]
+  def sources = files("native/claj.c")
+  def outDir = layout.buildDirectory.dir("native")
+
+  task compileNative {
+    def jdk = System.getProperty("java.home")
+    inputs.files sources
+    inputs.property "targets", targets.collect { k, v -> k + v.join(" ") }
+    outputs.dir outDir
+    doLast {
+      delete outDir
+      if (targets.isEmpty()) logger.warn("server: no zig and no gcc, the jar has no libclaj")
+      targets.each { target, compiler ->
+        def library = outDir.get().file("com/xpdustry/claj/server/stream/linux-${target}/libclaj.so").asFile
+        library.parentFile.mkdirs()
+        exec {
+          commandLine compiler + ["-std=c99", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Werror", "-Os", "-fPIC",
+                                  "-shared", "-fvisibility=hidden", "-s", "-I${jdk}/include", "-I${jdk}/include/linux",
+                                  "-o", library] + sources.files
+        }
+      }
+    }
+  }
+  sourceSets.main.output.dir(outDir, builtBy: compileNative)
+
+  // Socket-level checks of the stream relay, with what the manifest gives java -jar. Usage: ./gradlew :server:checkRelay
+  // [-PtestJava=/path/to/java8/bin/java] [-Pchecks=name,name] [-Pudp=off|jni, which fails if it isn't the one in use]
+  sourceSets.test.java.srcDirs = ["test"]
+  compileTestJava {
+    options.release = 8
+    options.compilerArgs += ["-Xlint:-options"]
+  }
+  def checks = { JavaExec task, String udp ->
+    task.mainClass = "com.xpdustry.claj.server.stream.RelayChecks"
+    task.classpath = sourceSets.test.runtimeClasspath
+    task.workingDir = task.temporaryDir
+    if (findProperty("testJava")) task.executable = findProperty("testJava")
+    if (udp) task.systemProperty "checks.udp", udp
+    // fd-exhaustion runs the server as a release does, from jars, which stay open when descriptors run out
+    task.dependsOn jar
+    task.doFirst { task.systemProperty "checks.serverClasspath", (files(jar.archiveFile) + configurations.runtimeClasspath).asPath }
+    // JDK 9+ launchers only read JDK_JAVA_OPTIONS, and --enable-native-access exists since 17
+    task.doFirst {
+      def out = new ByteArrayOutputStream()
+      exec { commandLine task.executable ?: task.javaLauncher.get().executablePath, "-version"; errorOutput = out }
+      int version = (out.toString() =~ /version "(?:1\.)?(\d+)/)[0][1] as int
+      if (version >= 9) task.environment "JDK_JAVA_OPTIONS", "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED" +
+                                                              (version >= 17 ? " --enable-native-access=ALL-UNNAMED" : "")
+    }
+  }
+  task checkRelay(type: JavaExec, dependsOn: testClasses) {
+    checks(it, findProperty("udp"))
+    if (findProperty("checks")) args findProperty("checks").split(",")
+  }
+  check.dependsOn checkRelay
+
+  // The checks that send datagrams, with Java's UDP then libclaj's. Usage: ./gradlew :server:checkUdpBackends
+  def udpChecks = ["hello-udp", "hello-udp-duplicate", "hello-udp-other-address", "udp-control-reply",
+                   "udp-control-join", "udp-control-create", "udp-control-list-truncated", "udp-control-pipelined",
+                   "udp-control-malformed", "udp-transition-reads-tcp-first", "udp-control-config",
+                   "idle-timeout-datagrams", "datagram-udp-host", "datagram-tcp-host", "error-isolation-udp-hello",
+                   "datagram-ipv6", "datagram-batch"]
+  task checkUdpOff(type: JavaExec, dependsOn: testClasses) { checks(it, "off"); args udpChecks }
+  task checkUdpJni(type: JavaExec, dependsOn: testClasses) {
+    checks(it, "jni")
+    args udpChecks
+    onlyIf("libclaj is built for this machine") { !fileTree(outDir).isEmpty() }
+  }
+  task checkUdpBackends(dependsOn: [checkUdpOff, checkUdpJni])
 }
 
 project(":bench") {

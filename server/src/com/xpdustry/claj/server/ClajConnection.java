@@ -24,13 +24,14 @@ import java.net.InetAddress;
 import arc.net.Connection;
 import arc.net.DcReason;
 import arc.util.Log;
-import arc.util.Ratekeeper;
 
 import com.xpdustry.claj.common.net.stream.PreparedStream;
 import com.xpdustry.claj.common.net.stream.StreamSender;
 import com.xpdustry.claj.common.packets.Packet;
 import com.xpdustry.claj.common.packets.RawPacket;
 import com.xpdustry.claj.common.util.AddressUtil;
+import com.xpdustry.claj.server.stream.StreamConnection;
+import com.xpdustry.claj.server.util.ByteRate;
 
 
 public class ClajConnection {
@@ -40,7 +41,8 @@ public class ClajConnection {
   public final int id;
   /** hex version of {@link #id}. */
   public final String sid;
-  public final Ratekeeper packetRate;
+  /** What the connection may send, see {@link ClajConfig#clientRate} and {@link ClajConfig#hostRate}. */
+  public final ByteRate rate = new ByteRate();
   /** Whether the connection has already been removed from the rate-limit. */
   protected boolean uncounted;
 
@@ -51,7 +53,7 @@ public class ClajConnection {
          AddressUtil.encodeId(connection));
   }
 
-  protected ClajConnection(Connection connection, InetAddress address, String saddress, String sid) {
+  public ClajConnection(Connection connection, InetAddress address, String saddress, String sid) {
     if (connection == null) throw new NullPointerException("connection is null");
     if (address == null) throw new IllegalArgumentException("no address found for this connection");
     this.connection = connection;
@@ -59,7 +61,6 @@ public class ClajConnection {
     this.saddress = saddress;
     this.id = connection.getID();
     this.sid = sid;
-    this.packetRate = new Ratekeeper();
   }
 
   /** The room where the connection is right now. */
@@ -73,6 +74,11 @@ public class ClajConnection {
 
   public boolean isConnected() {
     return connection.isConnected();
+  }
+
+  /** @return whether it is a connection of the stream relay, not of Arc's server. */
+  public boolean isStream() {
+    return connection instanceof StreamConnection;
   }
 
   /** Send via TCP. */

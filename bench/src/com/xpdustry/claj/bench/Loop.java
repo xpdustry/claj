@@ -268,10 +268,10 @@ final class Loop extends Thread {
       }
     } else {
       Room.Host h = f.room.host;
-      if (!h.beginFrame(Proto.WRAP_HEADER + size)) return blocked();
-      bench.proto.writeWrap(h.out, c == null ? Proto.CON_BROADCAST : c.conId, !f.udp);
-      writePayload(h.out, ONE_WAY, f.id, now, size);
-      h.endFrame();
+      ByteBuffer o = h.beginPayload(c == null ? Proto.CON_BROADCAST : c.conId, size, f.udp);
+      if (o == null) return blocked();
+      writePayload(o, ONE_WAY, f.id, now, size);
+      h.endPayload();
     }
 
     int fan = f.fanout();
@@ -313,14 +313,13 @@ final class Loop extends Thread {
   void echo(Room.Host host, int conId, ByteBuffer b, int pos, int len) {
     int fid = b.getInt(pos + 1);
     boolean udp = fid >= 0 && fid < flows.size && flows.items[fid].udp;
-    if (!host.beginFrame(Proto.WRAP_HEADER + len)) {
+    ByteBuffer o = host.beginPayload(conId, len, udp);
+    if (o == null) {
       blocked();
       return;
     }
-    ByteBuffer o = host.out;
-    bench.proto.writeWrap(o, conId, !udp);
     o.put((byte)(MARKER | ECHO_REPLY)).put(b.array(), b.arrayOffset() + pos + 1, len - 1);
-    host.endFrame();
+    host.endPayload();
     stats.sent++;
   }
 

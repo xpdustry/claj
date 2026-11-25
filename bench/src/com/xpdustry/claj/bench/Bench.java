@@ -72,7 +72,8 @@ final class Bench {
     rand = new Rand(sc.seed());
     // A few frames, as thousands of peers can be created. Hosts receive from all their clients.
     int frame = Proto.WRAP_HEADER + maxSize + 2;
-    hostBuffer = Math.max(32 * 1024, frame * 8);
+    // A stream relay host receives DATA frames of up to a slice, 65,535 B at most.
+    hostBuffer = Math.max(proto.stream ? Proto.MUX_HEADER + 0xffff : 32 * 1024, frame * 8);
     clientBuffer = Math.max(4 * 1024, frame * 4);
   }
 
@@ -118,8 +119,13 @@ final class Bench {
 
   Run run() throws Exception {
     Run run = new Run(label, proto.toString(), sc);
-    if (sc.has(Flow.BROADCAST) && proto.legacy) {
-      run.error = "broadcast is not supported by 2.3.x servers";
+    if (sc.has(Flow.BROADCAST) && (proto.legacy || proto.stream)) {
+      run.error = "broadcast is not supported by " + proto + " servers by the bench";
+      Log.warn("Skipped: @.", run.error);
+      return run;
+    }
+    if (proto.stream && sc.udp() > 0 && maxSize > Proto.MAX_STREAM_DATAGRAM) {
+      run.error = "UDP payloads above " + Proto.MAX_STREAM_DATAGRAM + " B are dropped by the stream relay by design";
       Log.warn("Skipped: @.", run.error);
       return run;
     }

@@ -84,7 +84,8 @@ public class ClajStateSummary {
 
     rooms = ClajVars.relay.rooms.size;
     clients = ClajVars.relay.clientsInRooms();
-    connections = ClajVars.relay.getConnections().length;
+    connections = ClajVars.relay.getConnections().length +
+                  (ClajVars.stream == null ? 0 : ClajVars.stream.connections.size);
 
     NetworkSpeed net = ClajVars.relay.networkSpeed;
     if (net != null) {
